@@ -1,0 +1,97 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <!-- Cesium 主库：全局命名空间 Cesium -->
+    <script src="./libs/Cesium/Cesium.js"></script>
+    <!-- Cesium 自带控件（Animation/Timeline/BaseLayerPicker 等）的样式 -->
+    <link href="./libs/Cesium/Widgets/widgets.css" rel="stylesheet" />
+  </head>
+  <style>
+    /* 或者只隐藏 Cesium 的 Logo 和文字 */
+    .cesium-viewer-bottom {
+      display: none !important;
+    }
+  </style>
+
+  <body
+    style="
+      margin: 0;
+      overflow: hidden;
+      background: #fff;
+      width: 100%;
+      height: 100%;
+      position: absolute;
+      top: 0;
+    "
+  >
+    <div id="map" style="margin: 0 auto; width: 100%; height: 100%"></div>
+
+    <script type="module">
+      import Draw from "./js/drawTool.js";
+      import initGui from "./js/gui.js";
+
+      const viewer = new Cesium.Viewer("map", {
+        baseLayer: false, // 不加载默认底图，避免 defaultAccessToken 报错
+        // 隐藏右上角控件组
+        homeButton: false, // 主页按钮
+        geocoder: false, // 地名查找按钮
+        sceneModePicker: false, // 场景模式选择器 (2D/3D)
+        baseLayerPicker: false, // 底图选择器
+        navigationHelpButton: false, // 帮助按钮
+        fullscreenButton: false, // 全屏按钮
+        // 隐藏时间轴和时钟控制
+        timeline: false, // 底部的 time line[citation:4]
+        animation: false, // 左下角的动画控制器（时钟）[citation:1]
+        // 其他可能干扰的控件
+        infoBox: false, // 点击实体后弹出的信息框
+        selectionIndicator: false, // 选中实体时的指示框
+      });
+      window.viewer = viewer;
+      // 开启帧率显示
+      // viewer.scene.debugShowFramesPerSecond = true;
+
+      // // 加载高德 XYZ 底图（路网图）
+      // var xyz = new Cesium.UrlTemplateImageryProvider({
+      //   // url: "https://webrd04.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=7&x={x}&y={y}&z={z}",
+      //   url: "https://webst01.is.autonavi.com/appmaptile?style=6&x={x}&y={y}&z={z}",
+      // });
+      // viewer.imageryLayers.addImageryProvider(xyz);
+
+      // 加载单张图片
+      var imageryProvider = new Cesium.SingleTileImageryProvider({
+        url: "./Earth_3.jpg",
+      });
+      viewer.imageryLayers.addImageryProvider(imageryProvider);
+
+      viewer.camera.setView({
+        destination: Cesium.Cartesian3.fromDegrees(110, 40, 7000000),
+        // orientation: {
+        //   heading: 0, // 朝向（弧度）
+        //   pitch: -Math.PI / 4, // 俯仰角（弧度），负值表示俯视
+        //   roll: 0, // 翻滚角（弧度）
+        // },
+      });
+
+      let draw = new Draw(viewer, {
+        isAutoEditing: true,
+        style: { lineWidth: 2, color: "red" },
+      });
+
+      draw.on("editMovePoint", (data) => {
+        console.log("实体编辑了", data);
+        // data = { id: "xxx", positions: [[lon,lat],...], type: "line" }
+      });
+      draw.on("editStop", (data) => {
+        console.log("实体编辑完成", data);
+        // data = { id: "xxx", positions: [[lon,lat],...], type: "line" }
+      });
+
+      // 需要时移除监听
+      // draw.off("CHANGE", handler);
+
+      // 初始化 lil-gui 面板（开始画线 / 清除）
+      initGui(draw, viewer);
+    </script>
+  </body>
+</html>
