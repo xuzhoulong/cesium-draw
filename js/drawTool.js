@@ -605,10 +605,13 @@ export default class draw {
    * @param {number} x - 屏幕 X 坐标
    * @param {number} y - 屏幕 Y 坐标
    * @param {object} shape - 目标实体数据
+   * @param {object} [options] - 额外配置
+   * @param {number} [options.vertexIndex] - 右键命中的顶点索引（传入时顶部追加“删除该点”按钮）
    */
-  showContextMenu(x, y, shape) {
+  showContextMenu(x, y, shape, options = {}) {
     this.hideContextMenu();
-    // 当前是否正在编辑该实体：是则显示"停止编辑"，否则显示"开始编辑"
+    const { vertexIndex } = options;
+    // 当前是否正在编辑该实体：是则显示“停止编辑”，否则显示“开始编辑”
     const isEditing = this.editShape === shape;
     const menu = document.createElement("div");
     menu.style.cssText = `
@@ -617,6 +620,30 @@ export default class draw {
       box-shadow: 0 2px 8px rgba(0,0,0,.25); padding: 4px 0;
       font: 13px sans-serif; user-select: none; min-width: 90px;
     `;
+
+    // 顶点删除按钮：仅当右键命中顶点且满足最少点数条件时显示
+    if (vertexIndex !== undefined && vertexIndex !== -1) {
+      const minPoints =
+        shape.type === "line" ? 3 : shape.type === "polygon" ? 4 : 0;
+      if (minPoints > 0 && shape.points.length >= minPoints) {
+        const delPointBtn = document.createElement("div");
+        delPointBtn.textContent = "删除该点";
+        delPointBtn.style.cssText =
+          "padding: 6px 20px; cursor: pointer; color: #d33;";
+        delPointBtn.addEventListener("mouseenter", () => {
+          delPointBtn.style.background = "#fee";
+        });
+        delPointBtn.addEventListener("mouseleave", () => {
+          delPointBtn.style.background = "";
+        });
+        delPointBtn.addEventListener("click", () => {
+          this.hideContextMenu();
+          this._removeVertex(shape, vertexIndex);
+        });
+        menu.appendChild(delPointBtn);
+      }
+    }
+
     // 第一个按钮：编辑中 → 停止编辑；空闲 → 开始编辑
     const firstBtn = document.createElement("div");
     firstBtn.textContent = isEditing ? "停止编辑" : "开始编辑";
@@ -630,9 +657,9 @@ export default class draw {
     firstBtn.addEventListener("click", () => {
       this.hideContextMenu();
       if (isEditing) {
-        this.stopEditing(); // 停止编辑
+        this.stopEditing();
       } else {
-        this.startEditing(shape); // 进入编辑（原有逻辑）
+        this.startEditing(shape);
       }
     });
     // 删除按钮：删除该实体
@@ -671,6 +698,27 @@ export default class draw {
       this.contextMenu = null;
     }
     document.removeEventListener("click", this.closeContextMenuHandler);
+  }
+
+  /**
+   * 删除指定顶点并重绘形状
+   * @param {object} shape - 实体数据
+   * @param {number} index - 顶点索引
+   */
+  _removeVertex(shape, index) {
+    // 移除顶点数据
+    shape.points.splice(index, 1);
+    // 移除顶点实体
+    const entity = shape.pointsEntity.splice(index, 1)[0];
+    if (entity) {
+      this.viewer.entities.remove(entity);
+    }
+    // 矩形特殊处理：对角点模型不支持删除顶点，跳过
+    // 线 / 多边形：主实体通过 CallbackProperty 引用 shape.points，自动重绘
+    // 更新中心点位置
+    this._updateCenterEntity(shape);
+    // 触发编辑事件，通知外部数据已变更
+    this.emit("editMovePoint", this._shapeResult(shape));
   }
 
   /**
@@ -861,14 +909,21 @@ export default class draw {
       // 命中当前实体自身 → 保持编辑，不做任何事
     }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
 
-    // 右键：命中实体时弹出右键菜单（编辑 / 删除），与空闲状态行为一致
+    // 右键：命中顶点时菜单顶部追加“删除该点”；命中其他位置显示常规菜单
     this.handler.setInputAction((e) => {
       const feature = this.viewer.scene.pick(e.position);
+      if (!Cesium.defined(feature)) return;
+      // 检测是否右键了当前编辑形状的顶点
+      const vertexIndex = shape.pointsEntity.findIndex(
+        (item) => item === feature.id,
+      );
       const hitShape = this.findShapeByFeature(feature);
       if (hitShape) {
-        this.showContextMenu(e.position.x, e.position.y, hitShape);
+        // 传入 vertexIndex（命中顶点时 >= 0，否则 -1），showContextMenu 内部判断是否显示“删除该点”
+        this.showContextMenu(e.position.x, e.position.y, hitShape, {
+          vertexIndex,
+        });
       }
-      // 右键空白处：不弹菜单，保持编辑
     }, Cesium.ScreenSpaceEventType.RIGHT_CLICK);
   }
 
