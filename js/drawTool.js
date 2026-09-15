@@ -222,7 +222,10 @@ export default class draw {
   findShapeByFeature(feature) {
     if (!Cesium.defined(feature)) return null;
     return this.shapes.find(
-      (s) => s.mainEntity === feature.id || s.pointsEntity.includes(feature.id),
+      (s) =>
+        s.mainEntity === feature.id ||
+        s.pointsEntity.includes(feature.id) ||
+        s.centerEntity === feature.id,
     );
   }
 
@@ -255,6 +258,40 @@ export default class draw {
         entity.position.setValue(Cesium.Cartesian3.fromDegrees(p[0], p[1]));
       }
     });
+  }
+
+  /**
+   * 计算形状的中心点（用于整体拖拽平移）
+   * 圆 / 椭圆：points[0] 即圆心；其他形状：所有顶点的算术平均值
+   * @param {object} shape - 实体数据
+   * @returns {Array} [lon, lat]
+   */
+  _calcCenter(shape) {
+    const points = shape.points;
+    if (!points || points.length === 0) return [0, 0];
+    // 圆和椭圆的 points[0] 就是圆心
+    if (shape.type === "circle" || shape.type === "ellipse") {
+      return [points[0][0], points[0][1]];
+    }
+    let sumLon = 0;
+    let sumLat = 0;
+    points.forEach((p) => {
+      sumLon += p[0];
+      sumLat += p[1];
+    });
+    return [sumLon / points.length, sumLat / points.length];
+  }
+
+  /**
+   * 更新中心点实体位置（拖拽顶点 / 整体移动后调用）
+   * @param {object} shape - 实体数据
+   */
+  _updateCenterEntity(shape) {
+    if (!shape.centerEntity) return;
+    const center = this._calcCenter(shape);
+    shape.centerEntity.position.setValue(
+      Cesium.Cartesian3.fromDegrees(center[0], center[1]),
+    );
   }
 
   // ======================= 事件系统 =======================
@@ -488,6 +525,16 @@ export default class draw {
         item.show = false;
       }
     });
+    // 创建中心点实体（线 / 矩形 / 多边形 / 圆 / 椭圆），编辑时显示用于整体拖拽平移
+    if (shape.type !== "point") {
+      const center = this._calcCenter(shape);
+      shape.centerEntity = this.createPointEntity(center, {
+        size: shape.style.pointSize,
+        color: shape.style.color,
+        outline: true,
+      });
+      shape.centerEntity.show = false; // 默认隐藏，编辑时显示
+    }
     this.shapes.push(shape);
     // 触发完成回调：返回 { id, positions, type }
     shape.success && shape.success(this._shapeResult(shape));
@@ -637,6 +684,10 @@ export default class draw {
     }
     this.viewer.entities.remove(shape.mainEntity);
     this.viewer.entities.remove(shape.tempEntity);
+    // 移除中心点实体
+    if (shape.centerEntity) {
+      this.viewer.entities.remove(shape.centerEntity);
+    }
     shape.pointsEntity.forEach((item) => {
       this.viewer.entities.remove(item);
     });
@@ -664,6 +715,10 @@ export default class draw {
           item.show = false;
         }
       });
+      // 隐藏上一个实体的中心点
+      if (this.editShape.centerEntity) {
+        this.editShape.centerEntity.show = false;
+      }
       // 上一个实体的编辑结束：触发 editStop，返回其最新信息
       this.emit("editStop", this._shapeResult(this.editShape));
     }
@@ -678,11 +733,38 @@ export default class draw {
       item.point.outlineColor = Cesium.Color.WHITE;
       item.point.outlineWidth = 2;
     });
+    // 显示中心点实体（用于整体拖拽平移）
+    if (shape.centerEntity) {
+      this._updateCenterEntity(shape); // 重新计算中心点位置（顶点可能被上次编辑移动过）
+      shape.centerEntity.show = true;
+    }
 
     this.handler = new Cesium.ScreenSpaceEventHandler(this.viewer.scene.canvas);
     let dragging = false; // 是否正在拖拽点，拖拽结束后忽略随后触发的 click
 
-    // 左键按下：命中顶点则顶点拖拽；命中主体实体则整体拖拽移动
+    // 编辑状态下的悬浮检测：鼠标移过中心点时提示“拖拽平移”
+    const setupHoverHandler = () => {
+      this.handler.setInputAction((e) => {
+        const feature = this.viewer.scene.pick(e.endPosition);
+        if (Cesium.defined(feature) && feature.id === shape.centerEntity) {
+          // 悬浮到中心点：显示提示
+          const lonlat = this.pickLonLat(e.endPosition);
+          if (lonlat) {
+            this.addLabel(
+              Cesium.Cartesian3.fromDegrees(lonlat[0], lonlat[1]),
+              "拖拽平移",
+            );
+          }
+          document.body.style.cursor = "crosshair";
+        } else {
+          this.removeLabel();
+          document.body.style.cursor = "default";
+        }
+      }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
+    };
+    setupHoverHandler();
+
+    // 左键按下：命中顶点则顶点拖拽；命中中心点则整体拖拽平移
     this.handler.setInputAction((e) => {
       const feature = this.viewer.scene.pick(e.position);
       dragging = false;
@@ -691,11 +773,12 @@ export default class draw {
       if (index !== -1) {
         // 顶点拖拽：更新单个顶点
         dragging = true;
+        this.removeLabel();
         document.body.style.cursor = "crosshair";
         this.lockCamera();
         this.handler.setInputAction((e) => {
           const lonlat = this.pickLonLat(e.endPosition);
-          if (!lonlat) return; // 如果没有点击到地面，返回
+          if (!lonlat) return;
           if (shape.updatePoint) {
             // 特殊形状（如矩形）：自定义联动更新，保持形状特征
             shape.updatePoint(index, lonlat);
@@ -707,21 +790,24 @@ export default class draw {
           shape.pointsEntity[index].position.setValue(
             Cesium.Cartesian3.fromDegrees(lonlat[0], lonlat[1]),
           );
+          // 实时更新中心点位置
+          this._updateCenterEntity(shape);
         }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
         return;
       }
-      // 整体拖拽：命中主体实体（线 / 面 / 圆 / 椭圆），整体平移
-      if (feature.id === shape.mainEntity) {
+      // 整体拖拽：命中中心点，整体平移
+      if (shape.centerEntity && feature.id === shape.centerEntity) {
         const start = this.pickLonLat(e.position);
-        if (!start) return; // 没有命中地面则不拖拽
+        if (!start) return;
         dragging = true;
+        this.removeLabel();
         document.body.style.cursor = "crosshair";
         this.lockCamera();
         // 记录拖拽起点和原始坐标快照（避免累计误差）
         const original = shape.points.map((p) => [p[0], p[1]]);
         this.handler.setInputAction((e) => {
           const lonlat = this.pickLonLat(e.endPosition);
-          if (!lonlat) return; // 如果没有点击到地面，返回
+          if (!lonlat) return;
           const dLon = lonlat[0] - start[0];
           const dLat = lonlat[1] - start[1];
           // 所有点整体平移（主体实体通过 CallbackProperty 自动更新）
@@ -729,8 +815,10 @@ export default class draw {
             p[0] = original[i][0] + dLon;
             p[1] = original[i][1] + dLat;
           });
-          // 同步更新顶点实体位置（矩形由对角点推导 4 角，其他形状一一对应）
+          // 同步更新顶点实体位置
           this._updateVertexEntities(shape);
+          // 同步更新中心点实体位置
+          this._updateCenterEntity(shape);
         }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
       }
     }, Cesium.ScreenSpaceEventType.LEFT_DOWN);
@@ -739,11 +827,10 @@ export default class draw {
     this.handler.setInputAction(() => {
       this.unlockCamera();
       document.body.style.cursor = "default";
-      this.handler.removeInputAction(Cesium.ScreenSpaceEventType.MOUSE_MOVE);
-      // 拖拽编辑结束（编辑完点）：触发 editMovePoint，回调返回最新数据 { id, positions, type }
-      // （dragging 不重置，留给 LEFT_CLICK 抑制误操作）
+      // 恢复悬浮检测（拖拽时 MOUSE_MOVE 被替换为拖拽逻辑，抬起后恢复）
+      setupHoverHandler();
+      // 拖拽编辑结束：触发 editMovePoint，回调返回最新数据 { id, positions, type }
       if (dragging) {
-        // 编辑完点：触发 editMovePoint，返回最新信息
         this.emit("editMovePoint", this._shapeResult(shape));
       }
     }, Cesium.ScreenSpaceEventType.LEFT_UP);
@@ -799,6 +886,10 @@ export default class draw {
           item.show = false;
         }
       });
+      // 隐藏中心点实体
+      if (this.editShape.centerEntity) {
+        this.editShape.centerEntity.show = false;
+      }
       // 结束编辑：触发 editStop，返回当前实体最新信息
       this.emit("editStop", this._shapeResult(this.editShape));
     }
