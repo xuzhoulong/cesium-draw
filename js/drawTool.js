@@ -225,7 +225,8 @@ export default class draw {
       (s) =>
         s.mainEntity === feature.id ||
         s.pointsEntity.includes(feature.id) ||
-        s.centerEntity === feature.id,
+        s.centerEntity === feature.id ||
+        (s.midpointsEntity && s.midpointsEntity.includes(feature.id)),
     );
   }
 
@@ -292,6 +293,90 @@ export default class draw {
     shape.centerEntity.position.setValue(
       Cesium.Cartesian3.fromDegrees(center[0], center[1]),
     );
+  }
+
+  /**
+   * 计算两个坐标点的中点
+   * @param {Array} a - [lon, lat]
+   * @param {Array} b - [lon, lat]
+   * @returns {Array} [lon, lat]
+   */
+  _midOf(a, b) {
+    return [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+  }
+
+  /**
+   * 创建 / 重建中间点实体（仅线 / 多边形）
+   * 线：每两个相邻顶点之间 1 个中间点（不闭合）
+   * 多边形：每两个相邻顶点之间 1 个中间点（闭合，末尾→首项）
+   * @param {object} shape - 实体数据
+   */
+  _createMidpoints(shape) {
+    if (shape.type !== "line" && shape.type !== "polygon") return;
+    this._clearMidpoints(shape);
+    shape.midpointsEntity = [];
+    const pts = shape.points;
+    if (pts.length < 2) return;
+    const count = shape.type === "polygon" ? pts.length : pts.length - 1;
+    for (let i = 0; i < count; i++) {
+      const a = pts[i];
+      const b = pts[(i + 1) % pts.length];
+      const mid = this._midOf(a, b);
+      const entity = this.viewer.entities.add({
+        position: Cesium.Cartesian3.fromDegrees(mid[0], mid[1]),
+        point: {
+          pixelSize: Math.max(shape.style.pointSize - 4, 4),
+          color: Cesium.Color.fromCssColorString(shape.style.color).withAlpha(
+            0.35,
+          ),
+          outlineColor: Cesium.Color.WHITE.withAlpha(0.5),
+          outlineWidth: 1,
+          disableDepthTestDistance: Number.POSITIVE_INFINITY,
+        },
+      });
+      shape.midpointsEntity.push(entity);
+    }
+  }
+
+  /**
+   * 更新中间点位置（顶点拖拽 / 整体平移后调用）
+   * 如果点数变化导致中间点数量不匹配，则重建
+   * @param {object} shape - 实体数据
+   */
+  _updateMidpoints(shape) {
+    if (shape.type !== "line" && shape.type !== "polygon") return;
+    if (!shape.midpointsEntity || shape.midpointsEntity.length === 0) {
+      this._createMidpoints(shape);
+      return;
+    }
+    const pts = shape.points;
+    const expectedCount =
+      shape.type === "polygon" ? pts.length : Math.max(pts.length - 1, 0);
+    if (shape.midpointsEntity.length !== expectedCount) {
+      // 数量变化，重建
+      this._createMidpoints(shape);
+      return;
+    }
+    for (let i = 0; i < expectedCount; i++) {
+      const a = pts[i];
+      const b = pts[(i + 1) % pts.length];
+      const mid = this._midOf(a, b);
+      shape.midpointsEntity[i].position.setValue(
+        Cesium.Cartesian3.fromDegrees(mid[0], mid[1]),
+      );
+    }
+  }
+
+  /**
+   * 清除所有中间点实体
+   * @param {object} shape - 实体数据
+   */
+  _clearMidpoints(shape) {
+    if (!shape.midpointsEntity) return;
+    shape.midpointsEntity.forEach((entity) => {
+      this.viewer.entities.remove(entity);
+    });
+    shape.midpointsEntity = [];
   }
 
   // ======================= 事件系统 =======================
@@ -530,7 +615,7 @@ export default class draw {
       const center = this._calcCenter(shape);
       shape.centerEntity = this.createPointEntity(center, {
         size: shape.style.pointSize,
-        color: shape.style.color,
+        color: "#ff9800", // 橙色，与顶点颜色区分
         outline: true,
       });
       shape.centerEntity.show = false; // 默认隐藏，编辑时显示
@@ -713,10 +798,11 @@ export default class draw {
     if (entity) {
       this.viewer.entities.remove(entity);
     }
-    // 矩形特殊处理：对角点模型不支持删除顶点，跳过
     // 线 / 多边形：主实体通过 CallbackProperty 引用 shape.points，自动重绘
     // 更新中心点位置
     this._updateCenterEntity(shape);
+    // 重建中间点
+    this._createMidpoints(shape);
     // 触发编辑事件，通知外部数据已变更
     this.emit("editMovePoint", this._shapeResult(shape));
   }
@@ -736,6 +822,8 @@ export default class draw {
     if (shape.centerEntity) {
       this.viewer.entities.remove(shape.centerEntity);
     }
+    // 移除中间点实体
+    this._clearMidpoints(shape);
     shape.pointsEntity.forEach((item) => {
       this.viewer.entities.remove(item);
     });
@@ -767,6 +855,8 @@ export default class draw {
       if (this.editShape.centerEntity) {
         this.editShape.centerEntity.show = false;
       }
+      // 清除上一个实体的中间点
+      this._clearMidpoints(this.editShape);
       // 上一个实体的编辑结束：触发 editStop，返回其最新信息
       this.emit("editStop", this._shapeResult(this.editShape));
     }
@@ -786,21 +876,40 @@ export default class draw {
       this._updateCenterEntity(shape); // 重新计算中心点位置（顶点可能被上次编辑移动过）
       shape.centerEntity.show = true;
     }
+    // 创建中间点（仅线 / 多边形，拖拽可增加顶点）
+    this._createMidpoints(shape);
 
     this.handler = new Cesium.ScreenSpaceEventHandler(this.viewer.scene.canvas);
     let dragging = false; // 是否正在拖拽点，拖拽结束后忽略随后触发的 click
 
-    // 编辑状态下的悬浮检测：鼠标移过中心点时提示“拖拽平移”
+    // 编辑状态下的悬浮检测：中心点提示“拖拽平移”，中间点提示“拖拽增加点”
     const setupHoverHandler = () => {
       this.handler.setInputAction((e) => {
         const feature = this.viewer.scene.pick(e.endPosition);
-        if (Cesium.defined(feature) && feature.id === shape.centerEntity) {
-          // 悬浮到中心点：显示提示
-          const lonlat = this.pickLonLat(e.endPosition);
+        if (!Cesium.defined(feature)) {
+          this.removeLabel();
+          document.body.style.cursor = "default";
+          return;
+        }
+        const lonlat = this.pickLonLat(e.endPosition);
+        if (feature.id === shape.centerEntity) {
+          // 悬浮到中心点：提示拖拽平移
           if (lonlat) {
             this.addLabel(
               Cesium.Cartesian3.fromDegrees(lonlat[0], lonlat[1]),
               "拖拽平移",
+            );
+          }
+          document.body.style.cursor = "crosshair";
+        } else if (
+          shape.midpointsEntity &&
+          shape.midpointsEntity.includes(feature.id)
+        ) {
+          // 悬浮到中间点：提示拖拽增加点
+          if (lonlat) {
+            this.addLabel(
+              Cesium.Cartesian3.fromDegrees(lonlat[0], lonlat[1]),
+              "拖拽增加点",
             );
           }
           document.body.style.cursor = "crosshair";
@@ -812,11 +921,57 @@ export default class draw {
     };
     setupHoverHandler();
 
-    // 左键按下：命中顶点则顶点拖拽；命中中心点则整体拖拽平移
+    // 左键按下：命中顶点则顶点拖拽；命中中间点则插入新顶点并拖拽；命中中心点则整体平移
     this.handler.setInputAction((e) => {
       const feature = this.viewer.scene.pick(e.position);
       dragging = false;
       if (!Cesium.defined(feature)) return;
+
+      // 检测是否命中中间点（拖拽增加顶点）
+      if (shape.midpointsEntity) {
+        const midIndex = shape.midpointsEntity.findIndex(
+          (item) => item === feature.id,
+        );
+        if (midIndex !== -1) {
+          // 拖拽中间点：在该位置插入新顶点，然后转为顶点拖拽
+          dragging = true;
+          this.removeLabel();
+          document.body.style.cursor = "crosshair";
+          this.lockCamera();
+          // 插入新顶点（在 midIndex 和 midIndex+1 之间）
+          const insertAt = midIndex + 1;
+          const midLonlat = this.pickLonLat(e.position) || [
+            ...this._midOf(
+              shape.points[midIndex],
+              shape.points[insertAt % shape.points.length],
+            ),
+          ];
+          shape.points.splice(insertAt, 0, midLonlat);
+          // 创建新顶点实体（编辑样式）
+          const newEntity = this.createPointEntity(midLonlat, {
+            size: shape.style.pointSize,
+            color: shape.style.color,
+            outline: true,
+          });
+          shape.pointsEntity.splice(insertAt, 0, newEntity);
+          // 移除被拖拽的中间点实体，重建中间点
+          this._createMidpoints(shape);
+          // 转为顶点拖拽逻辑
+          const newIndex = insertAt;
+          this.handler.setInputAction((e) => {
+            const lonlat = this.pickLonLat(e.endPosition);
+            if (!lonlat) return;
+            shape.points[newIndex] = lonlat;
+            shape.pointsEntity[newIndex].position.setValue(
+              Cesium.Cartesian3.fromDegrees(lonlat[0], lonlat[1]),
+            );
+            this._updateCenterEntity(shape);
+            this._updateMidpoints(shape);
+          }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
+          return;
+        }
+      }
+
       const index = shape.pointsEntity.findIndex((item) => item === feature.id);
       if (index !== -1) {
         // 顶点拖拽：更新单个顶点
@@ -828,18 +983,15 @@ export default class draw {
           const lonlat = this.pickLonLat(e.endPosition);
           if (!lonlat) return;
           if (shape.updatePoint) {
-            // 特殊形状（如矩形）：自定义联动更新，保持形状特征
             shape.updatePoint(index, lonlat);
           } else {
-            // 通用形状：直接更新该顶点坐标
             shape.points[index] = lonlat;
           }
-          // 线实体 positions 通过 CallbackProperty 引用 shape.points，自动更新
           shape.pointsEntity[index].position.setValue(
             Cesium.Cartesian3.fromDegrees(lonlat[0], lonlat[1]),
           );
-          // 实时更新中心点位置
           this._updateCenterEntity(shape);
+          this._updateMidpoints(shape);
         }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
         return;
       }
@@ -851,22 +1003,19 @@ export default class draw {
         this.removeLabel();
         document.body.style.cursor = "crosshair";
         this.lockCamera();
-        // 记录拖拽起点和原始坐标快照（避免累计误差）
         const original = shape.points.map((p) => [p[0], p[1]]);
         this.handler.setInputAction((e) => {
           const lonlat = this.pickLonLat(e.endPosition);
           if (!lonlat) return;
           const dLon = lonlat[0] - start[0];
           const dLat = lonlat[1] - start[1];
-          // 所有点整体平移（主体实体通过 CallbackProperty 自动更新）
           shape.points.forEach((p, i) => {
             p[0] = original[i][0] + dLon;
             p[1] = original[i][1] + dLat;
           });
-          // 同步更新顶点实体位置
           this._updateVertexEntities(shape);
-          // 同步更新中心点实体位置
           this._updateCenterEntity(shape);
+          this._updateMidpoints(shape);
         }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
       }
     }, Cesium.ScreenSpaceEventType.LEFT_DOWN);
@@ -945,6 +1094,8 @@ export default class draw {
       if (this.editShape.centerEntity) {
         this.editShape.centerEntity.show = false;
       }
+      // 清除中间点实体
+      this._clearMidpoints(this.editShape);
       // 结束编辑：触发 editStop，返回当前实体最新信息
       this.emit("editStop", this._shapeResult(this.editShape));
     }
