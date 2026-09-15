@@ -179,7 +179,8 @@ export default class draw {
       typeof v === "function" ? new Cesium.CallbackProperty(v, false) : v;
     return this.viewer.entities.add({
       id, // 传了 id 则指定实体 id，不传由 Cesium 自动生成
-      position: toProp(position) ?? Cesium.Cartesian3.fromDegrees(center[0], center[1]),
+      position:
+        toProp(position) ?? Cesium.Cartesian3.fromDegrees(center[0], center[1]),
       ellipse: {
         semiMajorAxis: toProp(semiMajorAxis),
         semiMinorAxis: toProp(semiMinorAxis),
@@ -251,9 +252,7 @@ export default class draw {
     shape.pointsEntity.forEach((entity, i) => {
       const p = shape.points[i];
       if (p) {
-        entity.position.setValue(
-          Cesium.Cartesian3.fromDegrees(p[0], p[1]),
-        );
+        entity.position.setValue(Cesium.Cartesian3.fromDegrees(p[0], p[1]));
       }
     });
   }
@@ -688,13 +687,11 @@ export default class draw {
       const feature = this.viewer.scene.pick(e.position);
       dragging = false;
       if (!Cesium.defined(feature)) return;
-      const index = shape.pointsEntity.findIndex(
-        (item) => item === feature.id,
-      );
+      const index = shape.pointsEntity.findIndex((item) => item === feature.id);
       if (index !== -1) {
         // 顶点拖拽：更新单个顶点
         dragging = true;
-        document.body.style.cursor = "move";
+        document.body.style.cursor = "crosshair";
         this.lockCamera();
         this.handler.setInputAction((e) => {
           const lonlat = this.pickLonLat(e.endPosition);
@@ -718,7 +715,7 @@ export default class draw {
         const start = this.pickLonLat(e.position);
         if (!start) return; // 没有命中地面则不拖拽
         dragging = true;
-        document.body.style.cursor = "move";
+        document.body.style.cursor = "crosshair";
         this.lockCamera();
         // 记录拖拽起点和原始坐标快照（避免累计误差）
         const original = shape.points.map((p) => [p[0], p[1]]);
