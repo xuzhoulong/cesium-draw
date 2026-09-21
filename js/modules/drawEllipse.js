@@ -11,7 +11,7 @@
  * @param {object} ctx - Draw 实例（this）
  * @param {object} options - 画椭圆参数
  * @param {string} [options.id] - 自定义实体 id（可选，不传则由 Cesium 自动生成）
- * @param {object} [options.style] - 样式（lineWidth / color / pointSize）
+ * @param {object} [options.style] - 样式（lineWidth / color / pointSize / clampToGround）
  * @param {Function} [options.success] - 绘制完成回调，返回 { id, positions, type }
  */
 export default function drawEllipse(ctx, { id, style = {}, success }) {
@@ -30,6 +30,7 @@ export default function drawEllipse(ctx, { id, style = {}, success }) {
       lineWidth: style.lineWidth ?? ctx.config.lineWidth,
       color: style.color ?? ctx.config.color,
       pointSize: style.pointSize ?? ctx.config.pointSize,
+      clampToGround: style.clampToGround ?? ctx.config.clampToGround,
     },
   };
   ctx.activeShape = shape;
@@ -65,7 +66,10 @@ export default function drawEllipse(ctx, { id, style = {}, success }) {
     shape.points[1] || shape.tempPoint || shape.points[0] || [0, 0];
   // 短半轴点（未定则用鼠标位置或长轴点）
   const shortPoint = () =>
-    shape.points[2] || shape.tempPoint || shape.points[1] || shape.points[0] || [0, 0];
+    shape.points[2] ||
+    shape.tempPoint ||
+    shape.points[1] ||
+    shape.points[0] || [0, 0];
 
   // 主实体：椭圆，全部属性 CallbackProperty 自动更新
   shape.mainEntity = ctx.createEllipseEntity([0, 0], shape.style, {
@@ -82,6 +86,7 @@ export default function drawEllipse(ctx, { id, style = {}, success }) {
       size: Math.max(shape.style.pointSize - 4, 4),
       color: shape.style.color,
       outline: false,
+      clampToGround: shape.style.clampToGround,
     });
     shape.pointsEntity.push(entity);
     return entity;

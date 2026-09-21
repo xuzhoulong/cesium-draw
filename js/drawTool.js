@@ -11,8 +11,8 @@ export default class draw {
    * @param {object} viewer - Cesium Viewer 实例
    * @param {object} [config] - 实例配置
    * @param {boolean} [config.isAutoEditing=true] - 绘制完成后是否自动激活编辑
-   * @param {object} [config.style] - 默认样式（lineWidth / color / pointSize）
-   *   也可直接传旧写法：{ lineWidth, color, pointSize }
+   * @param {object} [config.style] - 默认样式（lineWidth / color / pointSize / clampToGround）
+   *   也可直接传旧写法：{ lineWidth, color, pointSize, clampToGround }
    */
   constructor(viewer, config) {
     this.viewer = viewer;
@@ -22,6 +22,8 @@ export default class draw {
       lineWidth: style.lineWidth ?? config?.lineWidth ?? 2,
       color: style.color ?? config?.color ?? "#00ffff",
       pointSize: style.pointSize ?? config?.pointSize ?? 10,
+      // 是否贴地（线 / 矩形 / 多边形 / 圆 / 椭圆），默认 false 不贴地
+      clampToGround: style.clampToGround ?? config?.clampToGround ?? false,
     };
     // 绘制完成后是否自动激活编辑（默认 true，保持原有行为）
     this.isAutoEditing = config?.isAutoEditing ?? true;
@@ -48,7 +50,12 @@ export default class draw {
    * @returns {Array|null} [lon, lat]
    */
   pickLonLat(screenPosition) {
-    const cartesian = this.viewer.scene.camera.pickEllipsoid(screenPosition);
+    const scene = this.viewer.scene;
+    // 优先与真实地形求交（有起伏时更精确），无命中回退椭球
+    const ray = scene.camera.getPickRay(screenPosition);
+    const cartesian =
+      (ray && scene.globe.pick(ray, scene)) ||
+      scene.camera.pickEllipsoid(screenPosition);
     if (!cartesian) return null;
     const carto = Cesium.Cartographic.fromCartesian(cartesian);
     return [
@@ -80,6 +87,7 @@ export default class draw {
     const size = options.size ?? this.config.pointSize;
     const color = options.color ?? this.config.color;
     const outline = options.outline ?? false;
+    const clampToGround = options.clampToGround ?? false;
     const { id } = options;
     const point = {
       pixelSize: size,
@@ -90,6 +98,10 @@ export default class draw {
     };
     if (outline) {
       point.outlineColor = Cesium.Color.WHITE;
+    }
+    // 贴地形状的辅助点也夹取到地面，才能与贴地的边框线重合
+    if (clampToGround) {
+      point.heightReference = Cesium.HeightReference.CLAMP_TO_GROUND;
     }
     return this.viewer.entities.add({
       id, // 传了 id 则指定实体 id，不传由 Cesium 自动生成
@@ -103,13 +115,14 @@ export default class draw {
    * positions 使用 CallbackProperty 引用 points 数组，直接修改数组即可自动更新；
    * 也可通过 options.positions 传入自定义回调（如临时预览虚线返回 tempPoint）
    * @param {Array} points - 坐标点数组
-   * @param {object} [style] - { lineWidth, color }
+   * @param {object} [style] - { lineWidth, color, clampToGround }
    * @param {object} [options] - { dash: 是否虚线, positions: 自定义 positions 回调, id: 自定义实体 id }
    * @returns {Cesium.Entity}
    */
   createPolylineEntity(points, style = {}, options = {}) {
     const lineWidth = style.lineWidth ?? this.config.lineWidth;
     const color = style.color ?? this.config.color;
+    const clampToGround = style.clampToGround ?? this.config.clampToGround;
     const { dash = false, positions, id } = options;
     const polyline = {
       positions: new Cesium.CallbackProperty(
@@ -120,6 +133,8 @@ export default class draw {
       ),
       width: lineWidth,
       zIndex: 1,
+      // 是否贴地：由 style.clampToGround 控制（默认 false 不贴地）
+      clampToGround,
     };
     if (dash) {
       polyline.material = new Cesium.PolylineDashMaterialProperty({
@@ -128,7 +143,6 @@ export default class draw {
       });
     } else {
       polyline.material = Cesium.Color.fromCssColorString(color);
-      polyline.clampToGround = true;
     }
     // 传了 id 则指定实体 id，不传由 Cesium 自动生成
     return this.viewer.entities.add({ id, polyline });
@@ -139,27 +153,33 @@ export default class draw {
    * hierarchy 使用 CallbackProperty 引用 points 数组，直接修改数组即可自动更新；
    * 也可通过 options.positions 传入自定义回调（如预览矩形用鼠标位置实时计算）
    * @param {Array} points - 坐标点数组 [[lon, lat], ...]
-   * @param {object} [style] - { color }
+   * @param {object} [style] - { color, clampToGround }
    * @param {object} [options] - { id: 自定义实体 id, positions: 自定义 hierarchy 回调 }
    * @returns {Cesium.Entity}
    */
   createPolygonEntity(points, style = {}, options = {}) {
     const color = style.color ?? this.config.color;
+    const clampToGround = style.clampToGround ?? this.config.clampToGround;
     const { id, positions } = options;
+    const polygon = {
+      hierarchy: new Cesium.CallbackProperty(() => {
+        const p = typeof positions === "function" ? positions() : points;
+        return new Cesium.PolygonHierarchy(this.positionsToCartesian(p));
+      }, false),
+      material: Cesium.Color.fromCssColorString(color).withAlpha(0.5), // 半透明填充
+    };
+    // clampToGround=true：不设置 height，由 GroundPrimitive 自动夹取到地面（不支持 outline）
+    if (!clampToGround) {
+      // 不贴地：显式设置高度 0，禁用地形夹取，启用轮廓线
+      polygon.outline = true;
+      polygon.outlineColor = Cesium.Color.fromCssColorString(color);
+      polygon.outlineWidth = 2;
+      polygon.height = 0;
+      // 注意：有 height 时 Cesium 不支持 zIndex，故不设置
+    }
     return this.viewer.entities.add({
       id, // 传了 id 则指定实体 id，不传由 Cesium 自动生成
-      polygon: {
-        hierarchy: new Cesium.CallbackProperty(() => {
-          const p = typeof positions === "function" ? positions() : points;
-          return new Cesium.PolygonHierarchy(this.positionsToCartesian(p));
-        }, false),
-        material: Cesium.Color.fromCssColorString(color).withAlpha(0.5), // 半透明填充
-        outline: true,
-        outlineColor: Cesium.Color.fromCssColorString(color),
-        outlineWidth: 2,
-        height: 0, // 显式设置高度，禁用地形夹取，启用轮廓线（否则贴地不支持 outline）
-        // 注意：有 height 时 Cesium 不支持 zIndex，故不设置
-      },
+      polygon,
     });
   }
 
@@ -168,29 +188,35 @@ export default class draw {
    * position / semiMajorAxis / semiMinorAxis / rotation 均支持函数（自动转 CallbackProperty），
    * 实现"绘制预览 / 完成固定 / 编辑拖拽"全程自动更新
    * @param {Array} center - 中心点 [lon, lat]（仅作默认值）
-   * @param {object} [style] - { color }
+   * @param {object} [style] - { color, clampToGround }
    * @param {object} [options] - { id, position, semiMajorAxis, semiMinorAxis, rotation }
    * @returns {Cesium.Entity}
    */
   createEllipseEntity(center, style = {}, options = {}) {
     const color = style.color ?? this.config.color;
+    const clampToGround = style.clampToGround ?? this.config.clampToGround;
     const { id, position, semiMajorAxis, semiMinorAxis, rotation } = options;
     const toProp = (v) =>
       typeof v === "function" ? new Cesium.CallbackProperty(v, false) : v;
+    const ellipse = {
+      semiMajorAxis: toProp(semiMajorAxis),
+      semiMinorAxis: toProp(semiMinorAxis),
+      rotation: toProp(rotation),
+      material: Cesium.Color.fromCssColorString(color).withAlpha(0.5), // 半透明填充
+    };
+    // clampToGround=true：不设置 height，由 GroundPrimitive 自动夹取到地面（不支持 outline）
+    if (!clampToGround) {
+      // 不贴地：显式设置高度 0，禁用地形夹取，启用轮廓线
+      ellipse.outline = true;
+      ellipse.outlineColor = Cesium.Color.fromCssColorString(color);
+      ellipse.outlineWidth = 2;
+      ellipse.height = 0;
+    }
     return this.viewer.entities.add({
       id, // 传了 id 则指定实体 id，不传由 Cesium 自动生成
       position:
         toProp(position) ?? Cesium.Cartesian3.fromDegrees(center[0], center[1]),
-      ellipse: {
-        semiMajorAxis: toProp(semiMajorAxis),
-        semiMinorAxis: toProp(semiMinorAxis),
-        rotation: toProp(rotation),
-        material: Cesium.Color.fromCssColorString(color).withAlpha(0.5), // 半透明填充
-        outline: true,
-        outlineColor: Cesium.Color.fromCssColorString(color),
-        outlineWidth: 2,
-        height: 0,
-      },
+      ellipse,
     });
   }
 
@@ -332,6 +358,10 @@ export default class draw {
           outlineColor: Cesium.Color.WHITE.withAlpha(0.5),
           outlineWidth: 1,
           disableDepthTestDistance: Number.POSITIVE_INFINITY,
+          // 贴地形状的中间点也夹取到地面，与贴地边框线重合
+          heightReference: shape.style.clampToGround
+            ? Cesium.HeightReference.CLAMP_TO_GROUND
+            : Cesium.HeightReference.NONE,
         },
       });
       shape.midpointsEntity.push(entity);
@@ -458,7 +488,7 @@ export default class draw {
    * @param {object} options - 绘制配置
    * @param {string} [options.id] - 自定义实体 id（可选，不传则由 Cesium 自动生成）
    * @param {string} options.type - 绘制类型："line" 画线（后续可扩展 "point" / "polygon"）
-   * @param {object} [options.style] - 样式配置（lineWidth / color / pointSize）
+   * @param {object} [options.style] - 样式配置（lineWidth / color / pointSize / clampToGround）
    * @param {Function} [options.success] - 绘制完成后的回调（可选，与 Promise 二选一）
    * @returns {Promise|undefined} 未传 success 时返回 Promise，绘制完成 resolve 对象 { id, positions, type }
    */
@@ -617,6 +647,7 @@ export default class draw {
         size: shape.style.pointSize,
         color: "#ff9800", // 橙色，与顶点颜色区分
         outline: true,
+        clampToGround: shape.style.clampToGround,
       });
       shape.centerEntity.show = false; // 默认隐藏，编辑时显示
     }
@@ -952,6 +983,7 @@ export default class draw {
             size: shape.style.pointSize,
             color: shape.style.color,
             outline: true,
+            clampToGround: shape.style.clampToGround,
           });
           shape.pointsEntity.splice(insertAt, 0, newEntity);
           // 移除被拖拽的中间点实体，重建中间点

@@ -11,7 +11,7 @@
  * @param {object} ctx - Draw 实例（this）
  * @param {object} options - 画圆参数
  * @param {string} [options.id] - 自定义实体 id（可选，不传则由 Cesium 自动生成）
- * @param {object} [options.style] - 样式（lineWidth / color / pointSize）
+ * @param {object} [options.style] - 样式（lineWidth / color / pointSize / clampToGround）
  * @param {Function} [options.success] - 绘制完成回调，返回 { id, positions, type }
  */
 export default function drawCircle(ctx, { id, style = {}, success }) {
@@ -30,6 +30,7 @@ export default function drawCircle(ctx, { id, style = {}, success }) {
       lineWidth: style.lineWidth ?? ctx.config.lineWidth,
       color: style.color ?? ctx.config.color,
       pointSize: style.pointSize ?? ctx.config.pointSize,
+      clampToGround: style.clampToGround ?? ctx.config.clampToGround,
     },
   };
   ctx.activeShape = shape;
@@ -72,6 +73,7 @@ export default function drawCircle(ctx, { id, style = {}, success }) {
       size: Math.max(shape.style.pointSize - 4, 4),
       color: shape.style.color,
       outline: false,
+      clampToGround: shape.style.clampToGround,
     });
     shape.pointsEntity.push(entity);
     return entity;

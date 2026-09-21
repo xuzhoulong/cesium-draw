@@ -7,7 +7,7 @@
  * @param {object} options - 画线参数
  * @param {string} [options.id] - 自定义实体 id（可选，不传则由 Cesium 自动生成）
  * @param {Array} [options.data] - 初始坐标点（[[lon, lat], ...]），空数组表示交互绘制
- * @param {object} [options.style] - 样式（lineWidth / color / pointSize）
+ * @param {object} [options.style] - 样式（lineWidth / color / pointSize / clampToGround）
  * @param {Function} [options.success] - 绘制完成回调，返回该线坐标点数组
  */
 export default function drawLine(ctx, { id, data = [], style = {}, success }) {
@@ -27,6 +27,7 @@ export default function drawLine(ctx, { id, data = [], style = {}, success }) {
       lineWidth: style.lineWidth ?? ctx.config.lineWidth,
       color: style.color ?? ctx.config.color,
       pointSize: style.pointSize ?? ctx.config.pointSize,
+      clampToGround: style.clampToGround ?? ctx.config.clampToGround,
     },
     firstPointTime: null, // 第一个点的点击时间（识别"双击画第一个点"）
   };
@@ -53,6 +54,7 @@ export default function drawLine(ctx, { id, data = [], style = {}, success }) {
       size: Math.max(shape.style.pointSize - 4, 4),
       color: shape.style.color,
       outline: false,
+      clampToGround: shape.style.clampToGround,
     });
     shape.pointsEntity.push(entity);
     return entity;

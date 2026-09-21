@@ -1,3 +1,10 @@
+/*
+ * @Author: xubingchao
+ * @Date: 2026-09-15 13:43:12
+ * @LastEditors: xubingchao
+ * @LastEditTime: 2026-09-21 10:02:28
+ * @FilePath: \cesium-draw\js\drawActions.js
+ */
 /**
  * 开始绘制：根据 gui 传入的绘制类型，判断调用对应的绘制方法
  * @param {object} draw - Draw 实例（js/drawTool.js）
@@ -5,6 +12,9 @@
  */
 export function startDraw(draw, type) {
   draw
+    // 贴地
+    // .startDraw({ type, style: { color: "#0092ff", clampToGround: true } })
+    // 不贴地
     .startDraw({ type, style: { color: "#0092ff" } })
     .then((result) => console.log("绘制完成", result));
 }
