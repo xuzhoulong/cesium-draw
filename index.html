@@ -2,7 +2,7 @@
  * @Author: xubingchao
  * @Date: 2026-09-15 13:43:12
  * @LastEditors: xubingchao
- * @LastEditTime: 2026-09-21 10:22:24
+ * @LastEditTime: 2026-09-21 10:39:09
  * @FilePath: \cesium-draw\index.html
 -->
 <!doctype html>
@@ -86,17 +86,22 @@
         style: { lineWidth: 2, color: "red" },
       });
 
+      draw.on("editStart", (data) => {
+        console.log("开始编辑", data);
+        // data = { id: "xxx", positions: [[lon,lat],...], type: "line" }
+      });
       draw.on("editMovePoint", (data) => {
-        console.log("实体编辑了", data);
+        console.log("编辑修改了点", data);
         // data = { id: "xxx", positions: [[lon,lat],...], type: "line" }
       });
       draw.on("editStop", (data) => {
-        console.log("实体编辑完成", data);
+        console.log("停止编辑", data);
         // data = { id: "xxx", positions: [[lon,lat],...], type: "line" }
       });
-
-      // 需要时移除监听
-      // draw.off("CHANGE", handler);
+      draw.on("removeGraphic", (data) => {
+        console.log("删除实体", data);
+        // data = { id: "xxx", positions: [[lon,lat],...], type: "line" }
+      });
 
       // 初始化 lil-gui 面板（开始画线 / 清除）
       initGui(draw, viewer);

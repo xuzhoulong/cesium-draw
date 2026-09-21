@@ -414,7 +414,7 @@ export default class draw {
   /**
    * 注册事件监听
    * 用法：draw.on("editMovePoint", (data) => { ... })，data 为 { id, positions, type }
-   * @param {string} eventName - 事件名（如 "editMovePoint" 编辑完点 / "editStop" 结束编辑）
+   * @param {string} eventName - 事件名（如 "editStart" 开始编辑 / "editMovePoint" 编辑完点 / "editStop" 结束编辑 / "removeGraphic" 删除实体）
    * @param {Function} callback - 回调，收到事件数据
    * @returns {this} 支持链式调用
    */
@@ -839,7 +839,7 @@ export default class draw {
   }
 
   /**
-   * 删除一个实体（线 / 点 / 面通用）
+   * 删除一个实体（线 / 点 / 面通用）；删除后会触发 removeGraphic 事件
    * @param {object} shape - 实体数据
    */
   removeShape(shape) {
@@ -862,12 +862,14 @@ export default class draw {
     if (index !== -1) {
       this.shapes.splice(index, 1);
     }
+    // 删除完成：触发 removeGraphic，返回被删除实体的最终信息
+    this.emit("removeGraphic", this._shapeResult(shape));
   }
 
   // ======================= 编辑 =======================
 
   /**
-   * 激活编辑：显示该实体的可拖拽点，支持拖动点位修改
+   * 激活编辑：显示该实体的可拖拽点，支持拖动点位修改；开始时会触发 editStart 事件
    * @param {object} shape - 实体数据
    */
   startEditing(shape) {
@@ -909,6 +911,8 @@ export default class draw {
     }
     // 创建中间点（仅线 / 多边形，拖拽可增加顶点）
     this._createMidpoints(shape);
+    // 开始编辑：触发 editStart，返回该实体当前信息
+    this.emit("editStart", this._shapeResult(shape));
 
     this.handler = new Cesium.ScreenSpaceEventHandler(this.viewer.scene.canvas);
     let dragging = false; // 是否正在拖拽点，拖拽结束后忽略随后触发的 click
