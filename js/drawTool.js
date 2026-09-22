@@ -10,7 +10,8 @@ export default class draw {
   /**
    * @param {object} viewer - Cesium Viewer 实例
    * @param {object} [config] - 实例配置
-   * @param {boolean} [config.isAutoEditing=true] - 绘制完成后是否自动激活编辑
+   * @param {boolean} [config.enableEdit=true] - 是否支持编辑（false 时禁用所有编辑入口，autoEdit 随之失效）
+   * @param {boolean} [config.autoEdit=true] - 绘制完成后是否自动激活编辑（仅在 enableEdit 为 true 时生效）
    * @param {object} [config.style] - 默认样式（lineWidth / color / pointSize / clampToGround）
    *   也可直接传旧写法：{ lineWidth, color, pointSize, clampToGround }
    */
@@ -25,8 +26,10 @@ export default class draw {
       // 是否贴地（线 / 矩形 / 多边形 / 圆 / 椭圆），默认 false 不贴地
       clampToGround: style.clampToGround ?? config?.clampToGround ?? false,
     };
-    // 绘制完成后是否自动激活编辑（默认 true，保持原有行为）
-    this.isAutoEditing = config?.isAutoEditing ?? true;
+    // 是否支持编辑（默认 true）；为 false 时禁用所有编辑入口，autoEdit 随之失效
+    this.enableEdit = config?.enableEdit ?? true;
+    // 绘制完成后是否自动激活编辑（默认 true，仅在 enableEdit 为 true 时生效）
+    this.autoEdit = config?.autoEdit ?? true;
     this.handler = null; // 当前绘制 / 编辑的事件处理器
     this.idleHandler = null; // 空闲状态下的"点击激活编辑"处理器
     this.shapes = []; // 所有已绘制完成的实体数据（线 / 点 / 面）
@@ -657,8 +660,8 @@ export default class draw {
     this.setupIdleHandler(); // 开启空闲点击激活
     this.activeShape = null;
     this.destroy(); // 销毁绘制 handler
-    // 根据配置决定是否自动激活编辑（isAutoEditing，默认 true）
-    if (this.isAutoEditing) {
+    // 根据配置决定是否自动激活编辑（需 enableEdit 且 autoEdit，二者默认均为 true）
+    if (this.enableEdit && this.autoEdit) {
       this.startEditing(shape);
     }
   }
@@ -684,20 +687,21 @@ export default class draw {
         this.viewer.scene.pick(e.endPosition),
       );
       if (shape) {
-        // 命中实体：在鼠标位置显示编辑提示
+        // 命中实体：在鼠标位置显示提示（启用编辑时提示可编辑，否则仅提示右键菜单）
         const lonlat = this.pickLonLat(e.endPosition);
         if (lonlat) {
           this.addLabel(
             Cesium.Cartesian3.fromDegrees(lonlat[0], lonlat[1]),
-            "左键点击进行编辑，右键菜单",
+            this.enableEdit ? "左键点击进行编辑，右键菜单" : "右键菜单",
           );
         }
       } else {
         this.removeLabel();
       }
     }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
-    // 左键点击实体：激活编辑
+    // 左键点击实体：激活编辑（仅在启用编辑时；未启用则忽略点击）
     this.idleHandler.setInputAction((e) => {
+      if (!this.enableEdit) return;
       if (this.activeShape || this.editing) return;
       const shape = this.findShapeByFeature(this.viewer.scene.pick(e.position));
       if (shape) {
@@ -760,25 +764,28 @@ export default class draw {
       }
     }
 
-    // 第一个按钮：编辑中 → 停止编辑；空闲 → 开始编辑
-    const firstBtn = document.createElement("div");
-    firstBtn.textContent = isEditing ? "停止编辑" : "开始编辑";
-    firstBtn.style.cssText = "padding: 6px 20px; cursor: pointer;";
-    firstBtn.addEventListener("mouseenter", () => {
-      firstBtn.style.background = "#eee";
-    });
-    firstBtn.addEventListener("mouseleave", () => {
-      firstBtn.style.background = "";
-    });
-    firstBtn.addEventListener("click", () => {
-      this.hideContextMenu();
-      if (isEditing) {
-        this.stopEditing();
-      } else {
-        this.startEditing(shape);
-      }
-    });
-    // 删除按钮：删除该实体
+    // 第一个按钮：编辑中 → 停止编辑；空闲 → 开始编辑（仅在启用编辑时显示）
+    if (this.enableEdit) {
+      const firstBtn = document.createElement("div");
+      firstBtn.textContent = isEditing ? "停止编辑" : "开始编辑";
+      firstBtn.style.cssText = "padding: 6px 20px; cursor: pointer;";
+      firstBtn.addEventListener("mouseenter", () => {
+        firstBtn.style.background = "#eee";
+      });
+      firstBtn.addEventListener("mouseleave", () => {
+        firstBtn.style.background = "";
+      });
+      firstBtn.addEventListener("click", () => {
+        this.hideContextMenu();
+        if (isEditing) {
+          this.stopEditing();
+        } else {
+          this.startEditing(shape);
+        }
+      });
+      menu.appendChild(firstBtn);
+    }
+    // 删除按钮：删除该实体（删除不属于编辑，始终可用）
     const delBtn = document.createElement("div");
     delBtn.textContent = "删除";
     delBtn.style.cssText = "padding: 6px 20px; cursor: pointer; color: #d33;";
@@ -793,7 +800,6 @@ export default class draw {
       this.removeShape(shape);
     });
 
-    menu.appendChild(firstBtn);
     menu.appendChild(delBtn);
     document.body.appendChild(menu);
     this.contextMenu = menu;
@@ -870,9 +876,11 @@ export default class draw {
 
   /**
    * 激活编辑：显示该实体的可拖拽点，支持拖动点位修改；开始时会触发 editStart 事件
+   * 未启用编辑（enableEdit=false）时直接忽略，作为覆盖所有调用入口的最后防线
    * @param {object} shape - 实体数据
    */
   startEditing(shape) {
+    if (!this.enableEdit) return; // 未启用编辑：忽略所有编辑激活请求
     this.destroy(); // 结束之前可能存在的绘制 / 编辑状态
     // 切换编辑时，先隐藏上一个编辑实体的点（防止前一个实体的点残留显示）
     if (this.editShape && this.editShape !== shape) {

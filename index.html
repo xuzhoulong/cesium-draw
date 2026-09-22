@@ -2,7 +2,7 @@
  * @Author: xubingchao
  * @Date: 2026-09-15 13:43:12
  * @LastEditors: xubingchao
- * @LastEditTime: 2026-09-21 10:39:09
+ * @LastEditTime: 2026-09-22 11:01:34
  * @FilePath: \cesium-draw\index.html
 -->
 <!doctype html>
@@ -82,7 +82,8 @@
       });
 
       let draw = new Draw(viewer, {
-        isAutoEditing: true,
+        enableEdit: false,
+        autoEdit: true,
         style: { lineWidth: 2, color: "red" },
       });
 

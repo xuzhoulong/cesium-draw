@@ -41,11 +41,11 @@
 
 ## 🛠️ 技术栈
 
-| 依赖 | 说明 |
-|---|---|
-| [Cesium](https://cesium.com/) | 三维地球渲染（离线版 v1.140） |
-| [lil-gui](https://lil-gui.georgealways.com/) | 轻量控制面板（离线版 v0.19.1） |
-| 原生 JavaScript | ES Module，无构建工具、无 npm 依赖 |
+| 依赖                                         | 说明                               |
+| -------------------------------------------- | ---------------------------------- |
+| [Cesium](https://cesium.com/)                | 三维地球渲染（离线版 v1.140）      |
+| [lil-gui](https://lil-gui.georgealways.com/) | 轻量控制面板（离线版 v0.19.1）     |
+| 原生 JavaScript                              | ES Module，无构建工具、无 npm 依赖 |
 
 ---
 
@@ -72,7 +72,7 @@ import Draw from "./js/drawTool.js";
 import initGui from "./js/gui.js";
 
 const viewer = new Cesium.Viewer("map", {
-  baseLayer: false,          // 关闭默认底图（避免 token 报错）
+  baseLayer: false, // 关闭默认底图（避免 token 报错）
   baseLayerPicker: false,
   infoBox: false,
   selectionIndicator: false,
@@ -86,7 +86,8 @@ viewer.imageryLayers.addImageryProvider(
 
 // 创建绘制工具实例
 const draw = new Draw(viewer, {
-  isAutoEditing: true,          // 绘制完自动进入编辑（默认 true）
+  enableEdit: true, // 是否支持编辑（默认 true）；false 时禁用所有编辑入口，autoEdit 随之失效
+  autoEdit: true, // 绘制完自动进入编辑（默认 true）
   style: { lineWidth: 2, color: "#0092ff", pointSize: 10 }, // 默认样式
 });
 
@@ -104,24 +105,24 @@ initGui(draw, viewer);
 
 ### 绘制交互
 
-| 类型 | 交互 | 完成 |
-|---|---|---|
-| 线 | 单击加点，右键删点（虚线实时重绘） | 双击结束 |
-| 点 | 鼠标移动预览 | 单击放置 |
-| 矩形 | 两点对角，预览实时跟随 | 第二点点击 |
-| 多边形 | 单击加点，预览面实时闭合，右键删点 | 双击闭合 |
-| 圆 | 第一点圆心、第二点半径点 | 第二点点击 |
-| 椭圆 | 圆心 → 长半轴点 → 短半轴点 | 第三点点击 |
+| 类型   | 交互                               | 完成       |
+| ------ | ---------------------------------- | ---------- |
+| 线     | 单击加点，右键删点（虚线实时重绘） | 双击结束   |
+| 点     | 鼠标移动预览                       | 单击放置   |
+| 矩形   | 两点对角，预览实时跟随             | 第二点点击 |
+| 多边形 | 单击加点，预览面实时闭合，右键删点 | 双击闭合   |
+| 圆     | 第一点圆心、第二点半径点           | 第二点点击 |
+| 椭圆   | 圆心 → 长半轴点 → 短半轴点         | 第三点点击 |
 
 ### 编辑操作
 
-| 操作 | 行为 |
-|---|---|
-| 按住顶点拖动 | 修改顶点（矩形对角联动保持矩形） |
-| 按住实体主体拖动 | **整体移动** |
-| 点击空白 | 退出编辑 |
-| 点击其他实体 | 切换编辑 |
-| 右键实体 | 菜单：开始编辑 / 停止编辑 / 删除 |
+| 操作             | 行为                             |
+| ---------------- | -------------------------------- |
+| 按住顶点拖动     | 修改顶点（矩形对角联动保持矩形） |
+| 按住实体主体拖动 | **整体移动**                     |
+| 点击空白         | 退出编辑                         |
+| 点击其他实体     | 切换编辑                         |
+| 右键实体         | 菜单：开始编辑 / 停止编辑 / 删除 |
 
 ---
 
@@ -166,11 +167,12 @@ draw.off("editMovePoint", handler);
 
 ```js
 new Draw(viewer, {
-  isAutoEditing: false,  // 绘制完是否自动进入编辑（默认 true）
+  enableEdit: true, // 是否支持编辑（默认 true）；false 时点击 / 右键菜单 / 自动编辑全部禁用，仅保留删除
+  autoEdit: false, // 绘制完是否自动进入编辑（默认 true）
   style: {
-    lineWidth: 2,        // 线宽
-    color: "#0092ff",    // 颜色（线/面/点）
-    pointSize: 10,       // 点大小
+    lineWidth: 2, // 线宽
+    color: "#0092ff", // 颜色（线/面/点）
+    pointSize: 10, // 点大小
   },
 });
 ```
