@@ -84,6 +84,8 @@ export default function drawPolygon(
       while (shape.points.length > 1) {
         ctx.viewer.entities.remove(shape.pointsEntity.pop());
         shape.points.pop();
+        ctx.emit("drawRemovePoint", ctx._shapeResult(shape));
+        if (ctx.activeShape !== shape) return;
       }
       shape.firstPointTime = null;
       return;
@@ -186,6 +188,7 @@ export default function drawPolygon(
     // 预览：只有 1 个点时显示虚线（连接第一点到鼠标）；≥ 2 个点只显示预览面
     shape.tempDashEntity.show = shape.points.length < 2;
     shape.tempEntity.show = shape.points.length >= 2;
+    ctx.emit("drawAddPoint", ctx._shapeResult(shape));
   }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
 
   // 监听右键点击：删除最后一个顶点，删除后预览立即重绘
@@ -207,6 +210,7 @@ export default function drawPolygon(
       shape.tempEntity.show = false;
       shape.tempPoint = null;
     }
+    ctx.emit("drawRemovePoint", ctx._shapeResult(shape));
   }, Cesium.ScreenSpaceEventType.RIGHT_CLICK);
 
   // 监听双击，结束绘制

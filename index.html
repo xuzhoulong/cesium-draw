@@ -2,7 +2,7 @@
  * @Author: xubingchao
  * @Date: 2026-09-15 13:43:12
  * @LastEditors: xubingchao
- * @LastEditTime: 2026-09-22 15:48:16
+ * @LastEditTime: 2026-09-22 16:00:34
  * @FilePath: \cesium-draw\index.html
 -->
 <!doctype html>
@@ -82,14 +82,20 @@
       });
 
       let draw = new Draw(viewer, {
-        enableEdit: false,
-        autoEdit: true,
+        enableEdit: true,
+        autoEdit: false,
         style: { lineWidth: 2, color: "red" },
       });
 
       draw.on("drawStart", (data) => {
         console.log("开始绘制", data);
         // data = { id: "xxx", positions: [], type: "line" }
+      });
+      draw.on("drawAddPoint", (data) => {
+        console.log("绘制新增了点", data); // { id, positions, type }
+      });
+      draw.on("drawRemovePoint", (data) => {
+        console.log("绘制删除了点", data); // { id, positions, type }
       });
       draw.on("drawEnd", (data) => {
         console.log("结束绘制", data);
@@ -98,6 +104,12 @@
       draw.on("editStart", (data) => {
         console.log("开始编辑", data);
         // data = { id: "xxx", positions: [[lon,lat],...], type: "line" }
+      });
+      draw.on("editAddPoint", (data) => {
+        console.log("编辑新增了点", data); // { id, positions, type }
+      });
+      draw.on("editRemovePoint", (data) => {
+        console.log("编辑删除了点", data); // { id, positions, type }
       });
       draw.on("editMovePoint", (data) => {
         console.log("编辑修改了点", data);

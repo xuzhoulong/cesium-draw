@@ -86,6 +86,8 @@ export default function drawPoint(ctx, { id, style = {}, success }) {
     shape.points = [lonlat];
     // 将正式点作为唯一可拖拽顶点（编辑模式可拖拽移动点的位置）
     shape.pointsEntity = [shape.mainEntity];
+    ctx.emit("drawAddPoint", ctx._shapeResult(shape));
+    if (ctx.activeShape !== shape) return;
 
     // 完成：入库、回调、根据配置进入编辑
     ctx.completeShape(shape);

@@ -138,6 +138,8 @@ export default function drawEllipse(ctx, { id, style = {}, success }) {
     }
     shape.points.push(lonlat);
     addPoint(lonlat);
+    ctx.emit("drawAddPoint", ctx._shapeResult(shape));
+    if (ctx.activeShape !== shape) return;
     if (shape.points.length >= 3) {
       finish(); // 短半轴点确定，完成
     }
@@ -157,6 +159,7 @@ export default function drawEllipse(ctx, { id, style = {}, success }) {
     } else {
       shape.tempPoint = null; // 圆心也撤销了，椭圆消失
     }
+    ctx.emit("drawRemovePoint", ctx._shapeResult(shape));
   }, Cesium.ScreenSpaceEventType.RIGHT_CLICK);
   ctx._emitDrawStart(shape);
 }

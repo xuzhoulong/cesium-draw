@@ -853,6 +853,16 @@ export default class draw {
    * @param {number} index - 顶点索引
    */
   _removeVertex(shape, index) {
+    const minPoints =
+      shape.type === "line" ? 2 : shape.type === "polygon" ? 3 : 0;
+    if (
+      !minPoints ||
+      !Number.isInteger(index) ||
+      index < 0 ||
+      index >= shape.points.length ||
+      shape.points.length <= minPoints
+    )
+      return;
     // 移除顶点数据
     shape.points.splice(index, 1);
     // 移除顶点实体
@@ -867,6 +877,7 @@ export default class draw {
     this._createMidpoints(shape);
     // 触发编辑事件，通知外部数据已变更
     this.emit("editMovePoint", this._shapeResult(shape));
+    this.emit("editRemovePoint", this._shapeResult(shape));
   }
 
   /**
@@ -1037,6 +1048,8 @@ export default class draw {
             this._updateCenterEntity(shape);
             this._updateMidpoints(shape);
           }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
+          this._updateCenterEntity(shape);
+          this.emit("editAddPoint", this._shapeResult(shape));
           return;
         }
       }

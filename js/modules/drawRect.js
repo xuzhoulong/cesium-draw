@@ -84,8 +84,11 @@ export default function drawRect(ctx, { id, style = {}, success }) {
     if (shape.points.length < 2) {
       // 第一点：显示预览矩形（跟随鼠标）
       shape.tempEntity.show = true;
+      ctx.emit("drawAddPoint", ctx._shapeResult(shape));
       return;
     }
+    ctx.emit("drawAddPoint", ctx._shapeResult(shape));
+    if (ctx.activeShape !== shape) return;
     // 第二点：完成绘制
     finishRect();
   }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
@@ -106,6 +109,7 @@ export default function drawRect(ctx, { id, style = {}, success }) {
         shape.tempEntity.show = true;
       }
     }
+    ctx.emit("drawRemovePoint", ctx._shapeResult(shape));
   }, Cesium.ScreenSpaceEventType.RIGHT_CLICK);
 
   // 完成绘制

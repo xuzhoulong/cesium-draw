@@ -74,6 +74,8 @@ export default function drawLine(ctx, { id, data = [], style = {}, success }) {
       while (shape.points.length > 1) {
         ctx.viewer.entities.remove(shape.pointsEntity.pop());
         shape.points.pop();
+        ctx.emit("drawRemovePoint", ctx._shapeResult(shape));
+        if (ctx.activeShape !== shape) return;
       }
       shape.firstPointTime = null;
       return;
@@ -148,6 +150,7 @@ export default function drawLine(ctx, { id, data = [], style = {}, success }) {
     }
     shape.points.push(lonlat); // 保存坐标
     addPoint(lonlat);
+    ctx.emit("drawAddPoint", ctx._shapeResult(shape));
   }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
 
   // 监听右键点击：删除最后一个点，删除后虚线立即重绘
@@ -169,6 +172,7 @@ export default function drawLine(ctx, { id, data = [], style = {}, success }) {
       // 没有点了，虚线消失
       shape.tempPoint = [];
     }
+    ctx.emit("drawRemovePoint", ctx._shapeResult(shape));
   }, Cesium.ScreenSpaceEventType.RIGHT_CLICK);
 
   // 监听双击，结束绘制
