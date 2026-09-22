@@ -730,12 +730,16 @@ export default class draw {
    */
   showContextMenu(x, y, shape, options = {}) {
     this.hideContextMenu();
+    // 将 canvas 相对坐标转换为 fixed 定位使用的视口坐标
+    const rect = this.viewer.scene.canvas.getBoundingClientRect();
+    const clientX = rect.left + x;
+    const clientY = rect.top + y;
     const { vertexIndex } = options;
     // 当前是否正在编辑该实体：是则显示“停止编辑”，否则显示“开始编辑”
     const isEditing = this.editShape === shape;
     const menu = document.createElement("div");
     menu.style.cssText = `
-      position: fixed; left: ${x}px; top: ${y}px; z-index: 9999;
+      position: fixed; left: ${clientX}px; top: ${clientY}px; z-index: 9999;
       background: #fff; border: 1px solid #ccc; border-radius: 4px;
       box-shadow: 0 2px 8px rgba(0,0,0,.25); padding: 4px 0;
       font: 13px sans-serif; user-select: none; min-width: 90px;
