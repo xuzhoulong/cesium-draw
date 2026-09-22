@@ -36,13 +36,13 @@ export default function drawEllipse(ctx, { id, style = {}, success }) {
   ctx.activeShape = shape;
 
   // 避坑：传了 id 且已存在时，先移除旧实体（含 shapes 数据），覆盖创建
-  if (shape.id && ctx.viewer.entities.getById(shape.id)) {
+  if (shape.id && ctx._entities.getById(shape.id)) {
     console.warn(`实体 id "${shape.id}" 已存在，旧实体将被移除`);
     const oldShape = ctx.shapes.find((s) => s.mainEntity.id === shape.id);
     if (oldShape) {
       ctx.removeShape(oldShape);
     } else {
-      ctx.viewer.entities.removeById(shape.id);
+      ctx._entities.removeById(shape.id);
     }
   }
 
@@ -96,9 +96,9 @@ export default function drawEllipse(ctx, { id, style = {}, success }) {
   const finish = () => {
     if (shape.points.length < 3) {
       // 半轴未定完整，整个椭圆作废
-      ctx.viewer.entities.remove(shape.mainEntity);
+      ctx._entities.remove(shape.mainEntity);
       shape.pointsEntity.forEach((item) => {
-        ctx.viewer.entities.remove(item);
+        ctx._entities.remove(item);
       });
       console.warn("椭圆需要圆心、长半轴点、短半轴点三个点");
       ctx.activeShape = null;
@@ -148,7 +148,7 @@ export default function drawEllipse(ctx, { id, style = {}, success }) {
   // 监听右键点击：撤销最后一个点（短半轴点 → 长半轴点 → 圆心 → 无）
   ctx.handler.setInputAction((e) => {
     if (shape.points.length === 0) return; // 没有点可撤销
-    ctx.viewer.entities.remove(shape.pointsEntity.pop());
+    ctx._entities.remove(shape.pointsEntity.pop());
     shape.points.pop();
     if (shape.points.length > 0) {
       // 回到上一个状态，预览基于当前鼠标位置重绘

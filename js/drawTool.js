@@ -17,6 +17,37 @@ export default class draw {
    */
   constructor(viewer, config) {
     this.viewer = viewer;
+    // 外部图层由调用方挂载；默认图层由工具创建并异步挂载
+    this.dataSource =
+      config?.dataSource ?? new Cesium.CustomDataSource("x-draw-layer");
+    this.ready = config?.dataSource
+      ? Promise.resolve(this.dataSource)
+      : viewer.dataSources.add(this.dataSource);
+    const entities = this.dataSource.entities;
+    const owned = new Set();
+    // 所有实体（包括预览、标签、编辑辅助点）共用同一所有权边界
+    this._entities = {
+      add: (options) => {
+        const entity = entities.add(options);
+        owned.add(entity);
+        return entity;
+      },
+      remove: (entity) => {
+        if (!owned.delete(entity)) return false;
+        return entities.remove(entity);
+      },
+      getById: (id) => {
+        const entity = entities.getById(id);
+        if (entity && !owned.has(entity)) {
+          throw new Error(`实体 id "${id}" 已被图层中的其他业务对象使用`);
+        }
+        return entity;
+      },
+      removeById: (id) => this._entities.remove(this._entities.getById(id)),
+      removeAll: () => {
+        for (const entity of [...owned]) this._entities.remove(entity);
+      },
+    };
     const style = config?.style || {};
     this.config = {
       // 默认样式：style 优先，其次兼容旧写法直接字段
@@ -43,6 +74,14 @@ export default class draw {
     this.viewer.cesiumWidget.screenSpaceEventHandler.removeInputAction(
       Cesium.ScreenSpaceEventType.LEFT_DOUBLE_CLICK,
     );
+  }
+
+  /**
+   * 图层的兼容访问入口，与公开属性 dataSource 指向同一对象。
+   * 支持通过 draw._dataSource.show 控制图层显隐。
+   */
+  get _dataSource() {
+    return this.dataSource;
   }
 
   // ======================= 公共工具方法（画点、画面等后续复用） =======================
@@ -106,7 +145,7 @@ export default class draw {
     if (clampToGround) {
       point.heightReference = Cesium.HeightReference.CLAMP_TO_GROUND;
     }
-    return this.viewer.entities.add({
+    return this._entities.add({
       id, // 传了 id 则指定实体 id，不传由 Cesium 自动生成
       position: Cesium.Cartesian3.fromDegrees(position[0], position[1]),
       point,
@@ -148,7 +187,7 @@ export default class draw {
       polyline.material = Cesium.Color.fromCssColorString(color);
     }
     // 传了 id 则指定实体 id，不传由 Cesium 自动生成
-    return this.viewer.entities.add({ id, polyline });
+    return this._entities.add({ id, polyline });
   }
 
   /**
@@ -180,7 +219,7 @@ export default class draw {
       polygon.height = 0;
       // 注意：有 height 时 Cesium 不支持 zIndex，故不设置
     }
-    return this.viewer.entities.add({
+    return this._entities.add({
       id, // 传了 id 则指定实体 id，不传由 Cesium 自动生成
       polygon,
     });
@@ -215,7 +254,7 @@ export default class draw {
       ellipse.outlineWidth = 2;
       ellipse.height = 0;
     }
-    return this.viewer.entities.add({
+    return this._entities.add({
       id, // 传了 id 则指定实体 id，不传由 Cesium 自动生成
       position:
         toProp(position) ?? Cesium.Cartesian3.fromDegrees(center[0], center[1]),
@@ -351,7 +390,7 @@ export default class draw {
       const a = pts[i];
       const b = pts[(i + 1) % pts.length];
       const mid = this._midOf(a, b);
-      const entity = this.viewer.entities.add({
+      const entity = this._entities.add({
         position: Cesium.Cartesian3.fromDegrees(mid[0], mid[1]),
         point: {
           pixelSize: Math.max(shape.style.pointSize - 4, 4),
@@ -407,7 +446,7 @@ export default class draw {
   _clearMidpoints(shape) {
     if (!shape.midpointsEntity) return;
     shape.midpointsEntity.forEach((entity) => {
-      this.viewer.entities.remove(entity);
+      this._entities.remove(entity);
     });
     shape.midpointsEntity = [];
   }
@@ -580,6 +619,7 @@ export default class draw {
    * @param {Function} [options.success] - 绘制完成回调，返回该线坐标点数组
    */
   drawLine(options) {
+    if (options?.id) this._entities.getById(options.id);
     drawLineModule(this, options);
   }
 
@@ -592,6 +632,7 @@ export default class draw {
    * @param {Function} [options.success] - 绘制完成回调，返回 { id, positions, type }
    */
   drawPoint(options) {
+    if (options?.id) this._entities.getById(options.id);
     drawPointModule(this, options);
   }
 
@@ -604,6 +645,7 @@ export default class draw {
    * @param {Function} [options.success] - 绘制完成回调，返回 { id, positions, type }
    */
   drawRect(options) {
+    if (options?.id) this._entities.getById(options.id);
     drawRectModule(this, options);
   }
 
@@ -617,6 +659,7 @@ export default class draw {
    * @param {Function} [options.success] - 绘制完成回调，返回 { id, positions, type }
    */
   drawPolygon(options) {
+    if (options?.id) this._entities.getById(options.id);
     drawPolygonModule(this, options);
   }
 
@@ -629,6 +672,7 @@ export default class draw {
    * @param {Function} [options.success] - 绘制完成回调，返回 { id, positions, type }
    */
   drawCircle(options) {
+    if (options?.id) this._entities.getById(options.id);
     drawCircleModule(this, options);
   }
 
@@ -641,6 +685,7 @@ export default class draw {
    * @param {Function} [options.success] - 绘制完成回调，返回 { id, positions, type }
    */
   drawEllipse(options) {
+    if (options?.id) this._entities.getById(options.id);
     drawEllipseModule(this, options);
   }
 
@@ -872,7 +917,7 @@ export default class draw {
     // 移除顶点实体
     const entity = shape.pointsEntity.splice(index, 1)[0];
     if (entity) {
-      this.viewer.entities.remove(entity);
+      this._entities.remove(entity);
     }
     // 线 / 多边形：主实体通过 CallbackProperty 引用 shape.points，自动重绘
     // 更新中心点位置
@@ -893,16 +938,16 @@ export default class draw {
     if (this.editShape === shape) {
       this.stopEditing();
     }
-    this.viewer.entities.remove(shape.mainEntity);
-    this.viewer.entities.remove(shape.tempEntity);
+    this._entities.remove(shape.mainEntity);
+    this._entities.remove(shape.tempEntity);
     // 移除中心点实体
     if (shape.centerEntity) {
-      this.viewer.entities.remove(shape.centerEntity);
+      this._entities.remove(shape.centerEntity);
     }
     // 移除中间点实体
     this._clearMidpoints(shape);
     shape.pointsEntity.forEach((item) => {
-      this.viewer.entities.remove(item);
+      this._entities.remove(item);
     });
     const index = this.shapes.indexOf(shape);
     if (index !== -1) {
@@ -1205,7 +1250,7 @@ export default class draw {
     const shape = this.activeShape;
     // 移除已添加的顶点实体
     shape.pointsEntity.forEach((item) => {
-      this.viewer.entities.remove(item);
+      this._entities.remove(item);
     });
     shape.pointsEntity = [];
     // 清空绘制数据（主实体 / 预览实体自动变为空）
@@ -1226,11 +1271,11 @@ export default class draw {
     }
     // 删除当前未完成的实体（主实体 / 预览实体 / 顶点实体）
     const shape = this.activeShape;
-    this.viewer.entities.remove(shape.mainEntity);
-    this.viewer.entities.remove(shape.tempEntity);
-    this.viewer.entities.remove(shape.tempDashEntity);
+    this._entities.remove(shape.mainEntity);
+    this._entities.remove(shape.tempEntity);
+    this._entities.remove(shape.tempDashEntity);
     shape.pointsEntity.forEach((item) => {
-      this.viewer.entities.remove(item);
+      this._entities.remove(item);
     });
     // 停止绘制状态
     this.activeShape = null;
@@ -1258,7 +1303,7 @@ export default class draw {
     }
     this.activeShape = null;
     this.shapes = [];
-    this.viewer.entities.removeAll();
+    this._entities.removeAll();
     results.forEach((result) => {
       this.emit("removeGraphic", result);
     });
@@ -1282,7 +1327,7 @@ export default class draw {
    */
   addLabel(movePosition, text) {
     if (!this.label) {
-      this.label = this.viewer.entities.add({
+      this.label = this._entities.add({
         label: {
           text: "",
           showBackground: true,
@@ -1304,7 +1349,7 @@ export default class draw {
    * 移除标签
    */
   removeLabel() {
-    this.label && this.viewer.entities.remove(this.label);
+    this.label && this._entities.remove(this.label);
     this.label = null;
   }
 }

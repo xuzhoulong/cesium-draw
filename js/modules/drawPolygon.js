@@ -44,13 +44,13 @@ export default function drawPolygon(
   ctx.activeShape = shape;
 
   // 避坑：传了 id 且已存在时，先移除旧实体（含 shapes 数据），覆盖创建
-  if (shape.id && ctx.viewer.entities.getById(shape.id)) {
+  if (shape.id && ctx._entities.getById(shape.id)) {
     console.warn(`实体 id "${shape.id}" 已存在，旧实体将被移除`);
     const oldShape = ctx.shapes.find((s) => s.mainEntity.id === shape.id);
     if (oldShape) {
       ctx.removeShape(oldShape);
     } else {
-      ctx.viewer.entities.removeById(shape.id);
+      ctx._entities.removeById(shape.id);
     }
   }
   // 主实体：面（hierarchy 引用 points，自动闭合，编辑拖拽自动更新）
@@ -82,7 +82,7 @@ export default function drawPolygon(
       shape.points.length <= 2
     ) {
       while (shape.points.length > 1) {
-        ctx.viewer.entities.remove(shape.pointsEntity.pop());
+        ctx._entities.remove(shape.pointsEntity.pop());
         shape.points.pop();
         ctx.emit("drawRemovePoint", ctx._shapeResult(shape));
         if (ctx.activeShape !== shape) return;
@@ -92,15 +92,15 @@ export default function drawPolygon(
     }
     shape.firstPointTime = null;
     // 移除预览虚线和预览面
-    ctx.viewer.entities.remove(shape.tempDashEntity);
+    ctx._entities.remove(shape.tempDashEntity);
     shape.tempDashEntity = null;
-    ctx.viewer.entities.remove(shape.tempEntity);
+    ctx._entities.remove(shape.tempEntity);
     shape.tempEntity = null;
     if (shape.points.length < 3) {
       // 顶点不足，整个面作废
-      ctx.viewer.entities.remove(shape.mainEntity);
+      ctx._entities.remove(shape.mainEntity);
       shape.pointsEntity.forEach((item) => {
-        ctx.viewer.entities.remove(item);
+        ctx._entities.remove(item);
       });
       console.warn("多边形至少需要三个点");
       ctx.activeShape = null;
@@ -194,7 +194,7 @@ export default function drawPolygon(
   // 监听右键点击：删除最后一个顶点，删除后预览立即重绘
   ctx.handler.setInputAction((e) => {
     if (shape.points.length === 0) return; // 没有点可删
-    ctx.viewer.entities.remove(shape.pointsEntity.pop());
+    ctx._entities.remove(shape.pointsEntity.pop());
     shape.points.pop();
     if (shape.points.length > 0) {
       const lonlat = ctx.pickLonLat(e.position);

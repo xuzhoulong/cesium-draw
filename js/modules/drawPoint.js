@@ -63,17 +63,17 @@ export default function drawPoint(ctx, { id, style = {}, success }) {
     if (!lonlat) return; // 如果没有点击到地面，返回
 
     // 移除预览点
-    ctx.viewer.entities.remove(shape.tempEntity);
+    ctx._entities.remove(shape.tempEntity);
     shape.tempEntity = null;
 
     // 传了 id 且已存在：移除旧实体（含 shapes 数据），覆盖创建
-    if (shape.id && ctx.viewer.entities.getById(shape.id)) {
+    if (shape.id && ctx._entities.getById(shape.id)) {
       console.warn(`实体 id "${shape.id}" 已存在，旧实体将被移除`);
       const oldShape = ctx.shapes.find((s) => s.mainEntity.id === shape.id);
       if (oldShape) {
         ctx.removeShape(oldShape);
       } else {
-        ctx.viewer.entities.removeById(shape.id);
+        ctx._entities.removeById(shape.id);
       }
     }
     // 创建正式点实体

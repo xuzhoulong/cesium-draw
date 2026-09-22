@@ -34,14 +34,14 @@ export default function drawLine(ctx, { id, data = [], style = {}, success }) {
   ctx.activeShape = shape;
 
   // 主实体：实线（传了 id 则指定实体 id，不传由 Cesium 自动生成）
-  if (shape.id && ctx.viewer.entities.getById(shape.id)) {
+  if (shape.id && ctx._entities.getById(shape.id)) {
     // id 已存在：移除旧实体（含本工具 shapes 中的残留数据），避免创建冲突（覆盖旧实体）
     console.warn(`实体 id "${shape.id}" 已存在，旧实体将被移除`);
     const oldShape = ctx.shapes.find((s) => s.mainEntity.id === shape.id);
     if (oldShape) {
       ctx.removeShape(oldShape);
     } else {
-      ctx.viewer.entities.removeById(shape.id);
+      ctx._entities.removeById(shape.id);
     }
   }
   shape.mainEntity = ctx.createPolylineEntity(shape.points, shape.style, {
@@ -72,7 +72,7 @@ export default function drawLine(ctx, { id, data = [], style = {}, success }) {
       shape.points.length <= 2
     ) {
       while (shape.points.length > 1) {
-        ctx.viewer.entities.remove(shape.pointsEntity.pop());
+        ctx._entities.remove(shape.pointsEntity.pop());
         shape.points.pop();
         ctx.emit("drawRemovePoint", ctx._shapeResult(shape));
         if (ctx.activeShape !== shape) return;
@@ -82,13 +82,13 @@ export default function drawLine(ctx, { id, data = [], style = {}, success }) {
     }
     shape.firstPointTime = null;
     // 移除临时虚线
-    ctx.viewer.entities.remove(shape.tempEntity);
+    ctx._entities.remove(shape.tempEntity);
     shape.tempEntity = null;
     if (shape.points.length < 2) {
       // 点数不足，整条线作废
-      ctx.viewer.entities.remove(shape.mainEntity);
+      ctx._entities.remove(shape.mainEntity);
       shape.pointsEntity.forEach((item) => {
-        ctx.viewer.entities.remove(item);
+        ctx._entities.remove(item);
       });
       console.warn("请至少选择两个点");
       ctx.activeShape = null;
@@ -156,7 +156,7 @@ export default function drawLine(ctx, { id, data = [], style = {}, success }) {
   // 监听右键点击：删除最后一个点，删除后虚线立即重绘
   ctx.handler.setInputAction((e) => {
     if (shape.points.length === 0) return; // 没有点可删
-    ctx.viewer.entities.remove(shape.pointsEntity.pop());
+    ctx._entities.remove(shape.pointsEntity.pop());
     shape.points.pop();
     if (shape.points.length > 0) {
       // 从新的最后一个点连接到当前鼠标位置

@@ -8,6 +8,20 @@
 
 ---
 
+## 图层接入
+
+默认使用独立 `CustomDataSource`，可通过 `await draw.ready` 等待挂载，通过 `draw.dataSource` 控制显隐及查询实体（不再使用 `viewer.entities`）。也可传入业务图层：
+
+```js
+const layer = new Cesium.CustomDataSource("业务绘制图层");
+await viewer.dataSources.add(layer);
+const draw = new Draw(viewer, { dataSource: layer });
+// layer.show = false;
+// layer.entities.getById(id);
+```
+
+外部图层由业务侧负责挂载和移除。`draw.clear()` 仅删除当前工具拥有的实体，保留共享图层中的其他对象；同 ID 的外部对象禁止覆盖。移除图层前先 `draw.clear()`，以同步交互状态和删除事件。
+
 ## ✨ 功能特性
 
 - 🗺️ **六种绘制类型**：线、点、矩形、多边形、圆、椭圆，面板一键切换

@@ -116,17 +116,17 @@ export default function drawRect(ctx, { id, style = {}, success }) {
   function finishRect() {
     if (shape.points.length < 2) return;
     // 移除预览矩形
-    ctx.viewer.entities.remove(shape.tempEntity);
+    ctx._entities.remove(shape.tempEntity);
     shape.tempEntity = null;
 
     // 避坑：传了 id 且已存在时，先移除旧实体（含 shapes 数据），覆盖创建
-    if (shape.id && ctx.viewer.entities.getById(shape.id)) {
+    if (shape.id && ctx._entities.getById(shape.id)) {
       console.warn(`实体 id "${shape.id}" 已存在，旧实体将被移除`);
       const oldShape = ctx.shapes.find((s) => s.mainEntity.id === shape.id);
       if (oldShape) {
         ctx.removeShape(oldShape);
       } else {
-        ctx.viewer.entities.removeById(shape.id);
+        ctx._entities.removeById(shape.id);
       }
     }
 

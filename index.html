@@ -2,7 +2,7 @@
  * @Author: xubingchao
  * @Date: 2026-09-15 13:43:12
  * @LastEditors: xubingchao
- * @LastEditTime: 2026-09-22 16:00:34
+ * @LastEditTime: 2026-09-22 17:04:55
  * @FilePath: \cesium-draw\index.html
 -->
 <!doctype html>
@@ -81,7 +81,10 @@
         // },
       });
 
+      // const drawLayer = new Cesium.CustomDataSource("业务绘制图层");
+      // await viewer.dataSources.add(drawLayer);
       let draw = new Draw(viewer, {
+        // dataSource: drawLayer,
         enableEdit: true,
         autoEdit: false,
         style: { lineWidth: 2, color: "red" },
