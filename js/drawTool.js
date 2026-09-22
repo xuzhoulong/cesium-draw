@@ -759,6 +759,7 @@ export default class draw {
     // 当前是否正在编辑该实体：是则显示“停止编辑”，否则显示“开始编辑”
     const isEditing = this.editShape === shape;
     const menu = document.createElement("div");
+    menu.className = "x-contextmenu";
     menu.style.cssText = `
       position: fixed; left: ${clientX}px; top: ${clientY}px; z-index: 9999;
       background: #fff; border: 1px solid #ccc; border-radius: 4px;
@@ -773,6 +774,7 @@ export default class draw {
       if (minPoints > 0 && shape.points.length >= minPoints) {
         const delPointBtn = document.createElement("div");
         delPointBtn.textContent = "删除该点";
+        delPointBtn.className = "x-contextmenu-item x-delete-point";
         delPointBtn.style.cssText =
           "padding: 6px 20px; cursor: pointer; color: #d33;";
         delPointBtn.addEventListener("mouseenter", () => {
@@ -793,6 +795,7 @@ export default class draw {
     if (this.enableEdit) {
       const firstBtn = document.createElement("div");
       firstBtn.textContent = isEditing ? "停止编辑" : "开始编辑";
+      firstBtn.className = "x-contextmenu-item x-edit";
       firstBtn.style.cssText = "padding: 6px 20px; cursor: pointer;";
       firstBtn.addEventListener("mouseenter", () => {
         firstBtn.style.background = "#eee";
@@ -813,6 +816,7 @@ export default class draw {
     // 删除按钮：删除该实体（删除不属于编辑，始终可用）
     const delBtn = document.createElement("div");
     delBtn.textContent = "删除";
+    delBtn.className = "x-contextmenu-item x-delete";
     delBtn.style.cssText = "padding: 6px 20px; cursor: pointer; color: #d33;";
     delBtn.addEventListener("mouseenter", () => {
       delBtn.style.background = "#fee";
