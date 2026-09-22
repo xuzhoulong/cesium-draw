@@ -1237,14 +1237,27 @@ export default class draw {
    * 清除：清空所有实体和绘制 / 编辑状态
    */
   clear() {
-    this.destroy();
+    // 保存已完成图形的坐标快照，清理完成后逐个通知外部
+    const results = this.shapes.map((shape) => {
+      const result = this._shapeResult(shape);
+      return {
+        ...result,
+        positions: result.positions.map((point) => [...point]),
+      };
+    });
+    this.stopEditing();
+    this.unlockCamera();
     this.hideContextMenu(); // 关闭右键菜单
     if (this.idleHandler) {
       this.idleHandler.destroy();
       this.idleHandler = null;
     }
+    this.activeShape = null;
     this.shapes = [];
     this.viewer.entities.removeAll();
+    results.forEach((result) => {
+      this.emit("removeGraphic", result);
+    });
   }
 
   /**
