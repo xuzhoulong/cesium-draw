@@ -475,10 +475,23 @@ export default class draw {
       ];
     }
     return {
-      id: shape.mainEntity.id, // 实体 id
+      id: shape.mainEntity?.id ?? shape.id, // 实体 id
       positions, // 最新坐标
       type: shape.type, // 绘制类型
     };
+  }
+
+  /**
+   * 绘制初始化完成后通知外部；点和矩形提前分配正式实体 id。
+   * 开始事件使用坐标快照，避免后续加点改变开始时的数据。
+   */
+  _emitDrawStart(shape) {
+    shape.id = shape.mainEntity?.id ?? shape.id ?? Cesium.createGuid();
+    const result = this._shapeResult(shape);
+    this.emit("drawStart", {
+      ...result,
+      positions: result.positions.map((point) => [...point]),
+    });
   }
 
   // ======================= 绘制入口 =======================
@@ -655,13 +668,21 @@ export default class draw {
       shape.centerEntity.show = false; // 默认隐藏，编辑时显示
     }
     this.shapes.push(shape);
-    // 触发完成回调：返回 { id, positions, type }
-    shape.success && shape.success(this._shapeResult(shape));
     this.setupIdleHandler(); // 开启空闲点击激活
     this.activeShape = null;
     this.destroy(); // 销毁绘制 handler
+    // 完成状态清理后触发事件，允许监听器安全地开始下一次绘制
+    this.emit("drawEnd", this._shapeResult(shape));
+    // 触发完成回调：返回 { id, positions, type }
+    shape.success && shape.success(this._shapeResult(shape));
     // 根据配置决定是否自动激活编辑（需 enableEdit 且 autoEdit，二者默认均为 true）
-    if (this.enableEdit && this.autoEdit) {
+    if (
+      this.enableEdit &&
+      this.autoEdit &&
+      !this.activeShape &&
+      !this.editShape &&
+      this.shapes.includes(shape)
+    ) {
       this.startEditing(shape);
     }
   }

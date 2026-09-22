@@ -178,4 +178,5 @@ export default function drawRect(ctx, { id, style = {}, success }) {
   }
   // 供 drawTool.stopDraw() 调用（预留，停止绘制直接清理，不触发完成）
   shape.finish = finishRect;
+  ctx._emitDrawStart(shape);
 }

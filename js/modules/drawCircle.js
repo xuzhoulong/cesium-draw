@@ -145,4 +145,5 @@ export default function drawCircle(ctx, { id, style = {}, success }) {
       shape.tempPoint = null; // 圆心也撤销了，圆消失
     }
   }, Cesium.ScreenSpaceEventType.RIGHT_CLICK);
+  ctx._emitDrawStart(shape);
 }

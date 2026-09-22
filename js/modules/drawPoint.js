@@ -90,4 +90,5 @@ export default function drawPoint(ctx, { id, style = {}, success }) {
     // 完成：入库、回调、根据配置进入编辑
     ctx.completeShape(shape);
   }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+  ctx._emitDrawStart(shape);
 }

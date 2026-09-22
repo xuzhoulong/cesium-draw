@@ -115,6 +115,8 @@ export default function drawPolygon(
   // 预置坐标数据的场景：直接画好并入库
   if (shape.points.length >= 3) {
     shape.points.forEach(addPoint);
+    ctx._emitDrawStart(shape);
+    if (ctx.activeShape !== shape) return;
     ctx.completeShape(shape);
     return;
   }
@@ -211,4 +213,5 @@ export default function drawPolygon(
   ctx.handler.setInputAction(() => {
     finishDraw();
   }, Cesium.ScreenSpaceEventType.LEFT_DOUBLE_CLICK);
+  ctx._emitDrawStart(shape);
 }

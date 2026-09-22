@@ -101,6 +101,8 @@ export default function drawLine(ctx, { id, data = [], style = {}, success }) {
   // 预置坐标数据的场景：直接画好并入库，画完马上进入编辑
   if (shape.points.length > 1) {
     shape.points.forEach(addPoint);
+    ctx._emitDrawStart(shape);
+    if (ctx.activeShape !== shape) return;
     ctx.completeShape(shape);
     return;
   }
@@ -173,4 +175,5 @@ export default function drawLine(ctx, { id, data = [], style = {}, success }) {
   ctx.handler.setInputAction(() => {
     finishDraw();
   }, Cesium.ScreenSpaceEventType.LEFT_DOUBLE_CLICK);
+  ctx._emitDrawStart(shape);
 }

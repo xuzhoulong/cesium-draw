@@ -2,7 +2,7 @@
  * @Author: xubingchao
  * @Date: 2026-09-15 13:43:12
  * @LastEditors: xubingchao
- * @LastEditTime: 2026-09-22 11:01:34
+ * @LastEditTime: 2026-09-22 15:48:16
  * @FilePath: \cesium-draw\index.html
 -->
 <!doctype html>
@@ -87,6 +87,14 @@
         style: { lineWidth: 2, color: "red" },
       });
 
+      draw.on("drawStart", (data) => {
+        console.log("开始绘制", data);
+        // data = { id: "xxx", positions: [], type: "line" }
+      });
+      draw.on("drawEnd", (data) => {
+        console.log("结束绘制", data);
+        // data = { id: "xxx", positions: [[lon,lat],...], type: "line" }
+      });
       draw.on("editStart", (data) => {
         console.log("开始编辑", data);
         // data = { id: "xxx", positions: [[lon,lat],...], type: "line" }

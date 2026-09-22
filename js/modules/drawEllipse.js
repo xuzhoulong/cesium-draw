@@ -158,4 +158,5 @@ export default function drawEllipse(ctx, { id, style = {}, success }) {
       shape.tempPoint = null; // 圆心也撤销了，椭圆消失
     }
   }, Cesium.ScreenSpaceEventType.RIGHT_CLICK);
+  ctx._emitDrawStart(shape);
 }
