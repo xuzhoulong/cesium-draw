@@ -1033,6 +1033,18 @@ export default class draw {
       font: 13px sans-serif; user-select: none; min-width: 90px;
     `;
 
+    const hoverStyle = document.createElement("style");
+    hoverStyle.textContent = `
+      .x-contextmenu .x-edit:hover {
+        background: #eee;
+      }
+      .x-contextmenu .x-delete:hover,
+      .x-contextmenu .x-delete-point:hover {
+        background: #fee;
+      }
+    `;
+    menu.appendChild(hoverStyle);
+
     // 顶点删除按钮：仅当右键命中顶点且满足最少点数条件时显示
     if (vertexIndex !== undefined && vertexIndex !== -1) {
       const minPoints =
@@ -1043,12 +1055,6 @@ export default class draw {
         delPointBtn.className = "x-contextmenu-item x-delete-point";
         delPointBtn.style.cssText =
           "padding: 6px 20px; cursor: pointer; color: #d33;";
-        delPointBtn.addEventListener("mouseenter", () => {
-          delPointBtn.style.background = "#fee";
-        });
-        delPointBtn.addEventListener("mouseleave", () => {
-          delPointBtn.style.background = "";
-        });
         delPointBtn.addEventListener("click", () => {
           this.hideContextMenu();
           this._removeVertex(shape, vertexIndex);
@@ -1063,12 +1069,6 @@ export default class draw {
       firstBtn.textContent = isEditing ? "停止编辑" : "开始编辑";
       firstBtn.className = "x-contextmenu-item x-edit";
       firstBtn.style.cssText = "padding: 6px 20px; cursor: pointer;";
-      firstBtn.addEventListener("mouseenter", () => {
-        firstBtn.style.background = "#eee";
-      });
-      firstBtn.addEventListener("mouseleave", () => {
-        firstBtn.style.background = "";
-      });
       firstBtn.addEventListener("click", () => {
         this.hideContextMenu();
         if (isEditing) {
@@ -1084,12 +1084,6 @@ export default class draw {
     delBtn.textContent = "删除";
     delBtn.className = "x-contextmenu-item x-delete";
     delBtn.style.cssText = "padding: 6px 20px; cursor: pointer; color: #d33;";
-    delBtn.addEventListener("mouseenter", () => {
-      delBtn.style.background = "#fee";
-    });
-    delBtn.addEventListener("mouseleave", () => {
-      delBtn.style.background = "";
-    });
     delBtn.addEventListener("click", () => {
       this.hideContextMenu();
       this.removeShape(shape);
