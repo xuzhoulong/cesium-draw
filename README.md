@@ -22,6 +22,22 @@ const draw = new Draw(viewer, { dataSource: layer });
 
 外部图层由业务侧负责挂载和移除。`draw.clear()` 仅删除当前工具拥有的实体，保留共享图层中的其他对象；同 ID 的外部对象禁止覆盖。移除图层前先 `draw.clear()`，以同步交互状态和删除事件。
 
+## 数据保存与静默回显
+
+```js
+const json = JSON.stringify(draw.getGraphics()); // 全部已完成图形快照
+const item = draw.getGraphic("myLine"); // 单个快照，未找到返回 null
+// 业务从存储读取后，在空闲状态追加；不会自动清空或触发保存回调
+const restored = draw.loadGraphics(JSON.parse(json));
+// draw.addGraphic(item); // 单个回显，返回快照
+```
+
+记录格式为 `{ id, type, positions, style }`，输入、输出均独立复制。回显不传 `id`（或为 `undefined`）时自动生成，返回结果包含生成的 ID；请保存该 ID，避免重复加载时追加新图形。显式传入非法 ID 仍会报错。可在 `drawEnd` / `editStop` 中调用 `getGraphic(data.id)` 保存；原事件载荷保持不变。回显不触发绘制事件、`success` 或 `editStart`，不受 `autoEdit` 影响，之后可照常拾取、编辑、删除。
+
+已有 ID（包括共享图层实体）冲突会拒绝加载；批量预校验，创建失败回滚本批实体。绘制或编辑期间需先 `stopDraw()` / `stopEditing()`。上述示例对原实例再次加载相同 ID 会报错；全量替换需业务显式 `clear()`，它仍会逐个触发 `removeGraphic`。不内置数据库、HTTP 或 localStorage。
+
+六种坐标语义及校验见 [使用文档](docs/使用文档.md#数据保存与回显)。页面控制台可调用 `drawDemo.exportJSON()`、`drawDemo.loadJSON(text)`。
+
 ## ✨ 功能特性
 
 - 🗺️ **六种绘制类型**：线、点、矩形、多边形、圆、椭圆，面板一键切换

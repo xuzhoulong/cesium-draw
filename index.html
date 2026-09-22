@@ -2,7 +2,7 @@
  * @Author: xubingchao
  * @Date: 2026-09-15 13:43:12
  * @LastEditors: xubingchao
- * @LastEditTime: 2026-09-22 17:04:55
+ * @LastEditTime: 2026-09-22 17:27:44
  * @FilePath: \cesium-draw\index.html
 -->
 <!doctype html>
@@ -126,6 +126,17 @@
         console.log("删除实体", data);
         // data = { id: "xxx", positions: [[lon,lat],...], type: "line" }
       });
+
+      // 控制台按需调用，不自动保存、不自动清空；已有 ID 会拒绝加载。
+      window.drawDemo = {
+        draw,
+        // 接受图形对象；不传 id 时自动生成，返回结果包含生成的 id。
+        addGraphic: (data) => draw.addGraphic(data),
+        exportJSON: () => JSON.stringify(draw.getGraphics()),
+        loadJSON: (text) => draw.loadGraphics(JSON.parse(text)),
+      };
+      // 在 drawEnd / editStop 中调用 draw.getGraphic(data.id)，可获取含样式的保存快照。
+      // 全量替换前由业务显式 draw.clear()，注意它会触发 removeGraphic。
 
       // 初始化 lil-gui 面板（开始画线 / 清除）
       initGui(draw, viewer);

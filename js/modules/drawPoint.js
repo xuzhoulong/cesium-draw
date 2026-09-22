@@ -77,13 +77,8 @@ export default function drawPoint(ctx, { id, style = {}, success }) {
       }
     }
     // 创建正式点实体
-    shape.mainEntity = ctx.createPointEntity(lonlat, {
-      size: shape.style.pointSize,
-      color: shape.style.color,
-      outline: false,
-      id: shape.id,
-    });
     shape.points = [lonlat];
+    createPointGeometry(ctx, shape);
     // 将正式点作为唯一可拖拽顶点（编辑模式可拖拽移动点的位置）
     shape.pointsEntity = [shape.mainEntity];
     ctx.emit("drawAddPoint", ctx._shapeResult(shape));
@@ -93,4 +88,15 @@ export default function drawPoint(ctx, { id, style = {}, success }) {
     ctx.completeShape(shape);
   }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
   ctx._emitDrawStart(shape);
+}
+
+// 正式点的创建入口，同时供静默回显使用
+export function createPointGeometry(ctx, shape) {
+  shape.mainEntity = ctx.createPointEntity(shape.points[0], {
+    size: shape.style.pointSize,
+    color: shape.style.color,
+    outline: false,
+    id: shape.id,
+  });
+  shape.pointsEntity = [shape.mainEntity];
 }

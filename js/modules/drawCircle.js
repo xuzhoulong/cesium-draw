@@ -46,26 +46,7 @@ export default function drawCircle(ctx, { id, style = {}, success }) {
     }
   }
 
-  // 两点距离（米）
-  const dist = (a, b) => {
-    const ca = Cesium.Cartesian3.fromDegrees(a[0], a[1]);
-    const cb = Cesium.Cartesian3.fromDegrees(b[0], b[1]);
-    return Cesium.Cartesian3.distance(ca, cb);
-  };
-  // 圆心（未定则用原点兜底）
-  const center = () => shape.points[0] || [0, 0];
-  // 半径点（未定则用鼠标位置，鼠标未动则退化为圆心）
-  const radiusPoint = () =>
-    shape.points[1] || shape.tempPoint || shape.points[0] || [0, 0];
-
-  // 主实体：圆（长短半轴相等 = 半径），全部属性 CallbackProperty 自动更新
-  shape.mainEntity = ctx.createEllipseEntity([0, 0], shape.style, {
-    id: shape.id,
-    position: () => Cesium.Cartesian3.fromDegrees(center()[0], center()[1]),
-    semiMajorAxis: () => dist(center(), radiusPoint()),
-    semiMinorAxis: () => dist(center(), radiusPoint()),
-    rotation: () => 0,
-  });
+  createCircleGeometry(ctx, shape);
 
   // 加点：圆心 / 半径点实体（画线样式：小号、无白边）
   const addPoint = (lonlat) => {
@@ -149,4 +130,22 @@ export default function drawCircle(ctx, { id, style = {}, success }) {
     ctx.emit("drawRemovePoint", ctx._shapeResult(shape));
   }, Cesium.ScreenSpaceEventType.RIGHT_CLICK);
   ctx._emitDrawStart(shape);
+}
+
+// 交互与回显共用控制点算法，不注册鼠标事件
+export function createCircleGeometry(ctx, shape) {
+  const center = () => shape.points[0] || [0, 0];
+  const radiusPoint = () => shape.points[1] || shape.tempPoint || center();
+  const radius = () =>
+    Cesium.Cartesian3.distance(
+      Cesium.Cartesian3.fromDegrees(...center()),
+      Cesium.Cartesian3.fromDegrees(...radiusPoint()),
+    );
+  shape.mainEntity = ctx.createEllipseEntity([0, 0], shape.style, {
+    id: shape.id,
+    position: () => Cesium.Cartesian3.fromDegrees(...center()),
+    semiMajorAxis: radius,
+    semiMinorAxis: radius,
+    rotation: () => 0,
+  });
 }

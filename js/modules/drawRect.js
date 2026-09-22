@@ -37,12 +37,7 @@ export default function drawRect(ctx, { id, style = {}, success }) {
   ctx.activeShape = shape;
 
   // 由两个对角点计算 4 个角（顺时针）
-  const toCorners = (a, b) => [
-    [a[0], a[1]],
-    [b[0], a[1]],
-    [b[0], b[1]],
-    [a[0], b[1]],
-  ];
+  const toCorners = rectCorners;
 
   // 避坑：预览矩形 hierarchy 用自定义回调，根据当前对角点实时计算，不误用 points 数组
   shape.tempEntity = ctx.createPolygonEntity([], shape.style, {
@@ -132,50 +127,7 @@ export default function drawRect(ctx, { id, style = {}, success }) {
 
     // 保持对角点数据（shape.points = [a, b] 两个对角点），创建正式矩形
     // 避坑：polygon hierarchy 用自定义回调，由对角点实时推导 4 角，编辑联动时自动更新
-    shape.mainEntity = ctx.createPolygonEntity(shape.points, shape.style, {
-      id: shape.id,
-      positions: () => toCorners(shape.points[0], shape.points[1]),
-    });
-    // 4 个角点实体（画线样式：小号、无白边），编辑时可拖拽
-    toCorners(shape.points[0], shape.points[1]).forEach((c) => {
-      shape.pointsEntity.push(
-        ctx.createPointEntity(c, {
-          size: Math.max(shape.style.pointSize - 4, 4),
-          color: shape.style.color,
-          outline: false,
-          clampToGround: shape.style.clampToGround,
-        }),
-      );
-    });
-    // 矩形专用联动：拖拽任意角，更新对应边界并保持矩形（对角点 a / b 联动）
-    shape.updatePoint = (index, lonlat) => {
-      const a = shape.points[0];
-      const b = shape.points[1];
-      switch (index) {
-        case 0: // 左下角：更新 a
-          a[0] = lonlat[0];
-          a[1] = lonlat[1];
-          break;
-        case 1: // 右下角：更新 b 的经度 + a 的纬度
-          b[0] = lonlat[0];
-          a[1] = lonlat[1];
-          break;
-        case 2: // 右上角：更新 b
-          b[0] = lonlat[0];
-          b[1] = lonlat[1];
-          break;
-        case 3: // 左上角：更新 a 的经度 + b 的纬度
-          a[0] = lonlat[0];
-          b[1] = lonlat[1];
-          break;
-      }
-      // 同步更新所有角点实体位置（保持矩形形状）
-      toCorners(a, b).forEach((c, i) => {
-        shape.pointsEntity[i].position.setValue(
-          Cesium.Cartesian3.fromDegrees(c[0], c[1]),
-        );
-      });
-    };
+    createRectGeometry(ctx, shape);
 
     // 完成：入库、回调、根据配置进入编辑
     ctx.completeShape(shape);
@@ -183,4 +135,43 @@ export default function drawRect(ctx, { id, style = {}, success }) {
   // 供 drawTool.stopDraw() 调用（预留，停止绘制直接清理，不触发完成）
   shape.finish = finishRect;
   ctx._emitDrawStart(shape);
+}
+
+export function rectCorners(a, b) {
+  return [
+    [a[0], a[1]],
+    [b[0], a[1]],
+    [b[0], b[1]],
+    [a[0], b[1]],
+  ];
+}
+
+// 交互与回显共用四角生成及对角点联动
+export function createRectGeometry(ctx, shape) {
+  shape.mainEntity = ctx.createPolygonEntity(shape.points, shape.style, {
+    id: shape.id,
+    positions: () => rectCorners(...shape.points),
+  });
+  rectCorners(...shape.points).forEach((point) => {
+    shape.pointsEntity.push(
+      ctx.createPointEntity(point, {
+        size: Math.max(shape.style.pointSize - 4, 4),
+        color: shape.style.color,
+        outline: false,
+        clampToGround: shape.style.clampToGround,
+      }),
+    );
+  });
+  shape.updatePoint = (index, point) => {
+    const [a, b] = shape.points;
+    const x = index === 0 || index === 3 ? a : b;
+    const y = index === 0 || index === 1 ? a : b;
+    x[0] = point[0];
+    y[1] = point[1];
+    rectCorners(a, b).forEach((corner, i) => {
+      shape.pointsEntity[i].position.setValue(
+        Cesium.Cartesian3.fromDegrees(...corner),
+      );
+    });
+  };
 }

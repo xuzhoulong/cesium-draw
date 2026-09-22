@@ -44,9 +44,7 @@ export default function drawLine(ctx, { id, data = [], style = {}, success }) {
       ctx._entities.removeById(shape.id);
     }
   }
-  shape.mainEntity = ctx.createPolylineEntity(shape.points, shape.style, {
-    id: shape.id,
-  });
+  createLineGeometry(ctx, shape);
 
   // 加点：画线过程中的点（小号、无描边）
   const addPoint = (lonlat) => {
@@ -180,4 +178,10 @@ export default function drawLine(ctx, { id, data = [], style = {}, success }) {
     finishDraw();
   }, Cesium.ScreenSpaceEventType.LEFT_DOUBLE_CLICK);
   ctx._emitDrawStart(shape);
+}
+
+export function createLineGeometry(ctx, shape) {
+  shape.mainEntity = ctx.createPolylineEntity(shape.points, shape.style, {
+    id: shape.id,
+  });
 }

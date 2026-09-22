@@ -46,39 +46,7 @@ export default function drawEllipse(ctx, { id, style = {}, success }) {
     }
   }
 
-  // 两点距离（米）
-  const dist = (a, b) => {
-    const ca = Cesium.Cartesian3.fromDegrees(a[0], a[1]);
-    const cb = Cesium.Cartesian3.fromDegrees(b[0], b[1]);
-    return Cesium.Cartesian3.distance(ca, cb);
-  };
-  // 长轴方向角（从正东逆时针，弧度；Cesium rotation 即此定义）
-  const heading = (a, b) => {
-    const dLon = (b[0] - a[0]) * Cesium.Math.toRadians(1);
-    const dLat = (b[1] - a[1]) * Cesium.Math.toRadians(1);
-    const cosLat = Math.cos(Cesium.Math.toRadians(a[1]));
-    return Math.atan2(dLat, dLon * cosLat);
-  };
-  // 圆心（未定则用原点兜底）
-  const center = () => shape.points[0] || [0, 0];
-  // 长半轴点（未定则用鼠标位置，鼠标未动则退化为圆心）
-  const longPoint = () =>
-    shape.points[1] || shape.tempPoint || shape.points[0] || [0, 0];
-  // 短半轴点（未定则用鼠标位置或长轴点）
-  const shortPoint = () =>
-    shape.points[2] ||
-    shape.tempPoint ||
-    shape.points[1] ||
-    shape.points[0] || [0, 0];
-
-  // 主实体：椭圆，全部属性 CallbackProperty 自动更新
-  shape.mainEntity = ctx.createEllipseEntity([0, 0], shape.style, {
-    id: shape.id,
-    position: () => Cesium.Cartesian3.fromDegrees(center()[0], center()[1]),
-    semiMajorAxis: () => dist(center(), longPoint()),
-    semiMinorAxis: () => dist(center(), shortPoint()),
-    rotation: () => heading(center(), longPoint()),
-  });
+  createEllipseGeometry(ctx, shape);
 
   // 加点：圆心 / 长半轴点 / 短半轴点实体（画线样式：小号、无白边）
   const addPoint = (lonlat) => {
@@ -162,4 +130,29 @@ export default function drawEllipse(ctx, { id, style = {}, success }) {
     ctx.emit("drawRemovePoint", ctx._shapeResult(shape));
   }, Cesium.ScreenSpaceEventType.RIGHT_CLICK);
   ctx._emitDrawStart(shape);
+}
+
+// 交互与回显共用长短轴及旋转计算
+export function createEllipseGeometry(ctx, shape) {
+  const dist = (a, b) =>
+    Cesium.Cartesian3.distance(
+      Cesium.Cartesian3.fromDegrees(...a),
+      Cesium.Cartesian3.fromDegrees(...b),
+    );
+  const heading = (a, b) => {
+    const dLon = (b[0] - a[0]) * Cesium.Math.toRadians(1);
+    const dLat = (b[1] - a[1]) * Cesium.Math.toRadians(1);
+    return Math.atan2(dLat, dLon * Math.cos(Cesium.Math.toRadians(a[1])));
+  };
+  const center = () => shape.points[0] || [0, 0];
+  const longPoint = () => shape.points[1] || shape.tempPoint || center();
+  const shortPoint = () =>
+    shape.points[2] || shape.tempPoint || shape.points[1] || center();
+  shape.mainEntity = ctx.createEllipseEntity([0, 0], shape.style, {
+    id: shape.id,
+    position: () => Cesium.Cartesian3.fromDegrees(...center()),
+    semiMajorAxis: () => dist(center(), longPoint()),
+    semiMinorAxis: () => dist(center(), shortPoint()),
+    rotation: () => heading(center(), longPoint()),
+  });
 }

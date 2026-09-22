@@ -1,10 +1,19 @@
 // 引入绘制模块（画线逻辑独立存放，避免本文件代码杂乱）
-import drawLineModule from "./modules/drawLine.js";
-import drawPointModule from "./modules/drawPoint.js";
-import drawRectModule from "./modules/drawRect.js";
-import drawPolygonModule from "./modules/drawPolygon.js";
-import drawCircleModule from "./modules/drawCircle.js";
-import drawEllipseModule from "./modules/drawEllipse.js";
+import drawLineModule, { createLineGeometry } from "./modules/drawLine.js";
+import drawPointModule, { createPointGeometry } from "./modules/drawPoint.js";
+import drawRectModule, {
+  createRectGeometry,
+  rectCorners,
+} from "./modules/drawRect.js";
+import drawPolygonModule, {
+  createPolygonGeometry,
+} from "./modules/drawPolygon.js";
+import drawCircleModule, {
+  createCircleGeometry,
+} from "./modules/drawCircle.js";
+import drawEllipseModule, {
+  createEllipseGeometry,
+} from "./modules/drawEllipse.js";
 
 export default class draw {
   /**
@@ -27,6 +36,7 @@ export default class draw {
     const owned = new Set();
     // 所有实体（包括预览、标签、编辑辅助点）共用同一所有权边界
     this._entities = {
+      snapshot: () => new Set(owned),
       add: (options) => {
         const entity = entities.add(options);
         owned.add(entity);
@@ -533,6 +543,212 @@ export default class draw {
     });
   }
 
+  // ======================= 数据导出与静默回显 =======================
+
+  /** 导出单个已完成图形的独立快照，未找到返回 null。 */
+  getGraphic(id) {
+    const shape = this.shapes.find((item) => item.mainEntity.id === id);
+    if (!shape) return null;
+    const result = this._shapeResult(shape);
+    return {
+      ...result,
+      positions: result.positions.map((point) => [...point]),
+      style: {
+        lineWidth: shape.style.lineWidth,
+        color: shape.style.color,
+        pointSize: shape.style.pointSize,
+        clampToGround:
+          shape.type === "point" ? false : shape.style.clampToGround,
+      },
+    };
+  }
+
+  /** 导出全部已完成图形，可直接 JSON.stringify 后交给业务层存储。 */
+  getGraphics() {
+    return this.shapes.map((shape) => this.getGraphic(shape.mainEntity.id));
+  }
+
+  /** 静默追加一个历史图形，不触发绘制事件或自动编辑。 */
+  addGraphic(data) {
+    return this.loadGraphics([data])[0];
+  }
+
+  /** 校验并复制历史数据，返回内部控制点模型。 */
+  _normalizeGraphic(data) {
+    if (!data || typeof data !== "object" || Array.isArray(data)) {
+      throw new TypeError("图形数据必须是对象");
+    }
+    const { type } = data;
+    // 未提供 id 时生成唯一标识；显式传入的非法 id 仍由下方校验拒绝。
+    const id = data.id === undefined ? Cesium.createGuid() : data.id;
+    const counts = {
+      point: [1, 1],
+      line: [2, Infinity],
+      rect: [2, 4],
+      polygon: [3, Infinity],
+      circle: [2, 2],
+      ellipse: [3, 3],
+    };
+    if (typeof id !== "string" || !id.trim())
+      throw new TypeError("图形 id 必须是非空字符串");
+    if (!Object.hasOwn(counts, type))
+      throw new TypeError(`不支持的图形类型：${type}`);
+    if (!Array.isArray(data.positions))
+      throw new TypeError(`${id}: positions 必须是数组`);
+    let points = Array.from(data.positions, (point) => {
+      if (
+        !Array.isArray(point) ||
+        point.length !== 2 ||
+        !Number.isFinite(point[0]) ||
+        !Number.isFinite(point[1]) ||
+        Math.abs(point[0]) > 180 ||
+        Math.abs(point[1]) > 90
+      ) {
+        throw new TypeError(`${id}: 坐标必须是合法的 [经度, 纬度]`);
+      }
+      return [...point];
+    });
+    const [min, max] = counts[type];
+    if (
+      points.length < min ||
+      points.length > max ||
+      (type === "rect" && points.length === 3)
+    ) {
+      throw new RangeError(`${id}: ${type} 控制点数量不正确`);
+    }
+    const same = (a, b) => a[0] === b[0] && a[1] === b[1];
+    if (type === "polygon" && same(points[0], points.at(-1))) {
+      throw new RangeError(`${id}: 多边形不应重复首点`);
+    }
+    if (type === "rect") {
+      if (points.length === 4) {
+        const expected = rectCorners(points[0], points[2]);
+        if (!points.every((point, i) => same(point, expected[i]))) {
+          throw new RangeError(`${id}: 矩形四角须使用 getGraphic 导出的顺序`);
+        }
+        points = [points[0], points[2]];
+      }
+      if (points[0][0] === points[1][0] || points[0][1] === points[1][1]) {
+        throw new RangeError(`${id}: 矩形宽高不能为零`);
+      }
+    }
+    if (type === "circle" || type === "ellipse") {
+      const center = Cesium.Cartesian3.fromDegrees(...points[0]);
+      const axes = points
+        .slice(1)
+        .map((point) =>
+          Cesium.Cartesian3.distance(
+            center,
+            Cesium.Cartesian3.fromDegrees(...point),
+          ),
+        );
+      if (
+        axes.some((axis) => axis <= 0) ||
+        (type === "ellipse" && axes[1] > axes[0])
+      ) {
+        throw new RangeError(`${id}: 半轴必须大于零，椭圆短轴不得大于长轴`);
+      }
+    }
+    if (
+      data.style !== undefined &&
+      (!data.style ||
+        typeof data.style !== "object" ||
+        Array.isArray(data.style))
+    ) {
+      throw new TypeError(`${id}: style 必须是对象`);
+    }
+    const source = data.style || {};
+    const style = {};
+    for (const key of ["lineWidth", "color", "pointSize", "clampToGround"]) {
+      style[key] = source[key] === undefined ? this.config[key] : source[key];
+    }
+    if (
+      !Number.isFinite(style.lineWidth) ||
+      style.lineWidth <= 0 ||
+      !Number.isFinite(style.pointSize) ||
+      style.pointSize <= 0 ||
+      typeof style.clampToGround !== "boolean" ||
+      typeof style.color !== "string" ||
+      !Cesium.Color.fromCssColorString(style.color)
+    ) {
+      throw new TypeError(`${id}: 样式中的颜色、尺寸或贴地配置无效`);
+    }
+    if (type === "point") style.clampToGround = false;
+    return {
+      id,
+      type,
+      points,
+      style,
+      pointsEntity: [],
+      mainEntity: null,
+      tempPoint: null,
+    };
+  }
+
+  /** 批量追加历史图形：预校验、静默创建，失败时回滚本批次。 */
+  loadGraphics(dataList) {
+    if (
+      this.activeShape ||
+      this.editShape ||
+      this.editing ||
+      this._loadingGraphics
+    ) {
+      throw new Error("请先结束当前绘制或编辑，再加载历史图形");
+    }
+    if (!Array.isArray(dataList)) throw new TypeError("历史图形列表必须是数组");
+    const shapes = Array.from(dataList, (data) => this._normalizeGraphic(data));
+    const ids = new Set(this.shapes.map((shape) => shape.mainEntity.id));
+    for (const shape of shapes) {
+      if (ids.has(shape.id) || this.dataSource.entities.getById(shape.id)) {
+        throw new Error(`图形 id "${shape.id}" 已存在，回显不覆盖已有实体`);
+      }
+      ids.add(shape.id);
+    }
+    if (!shapes.length) return [];
+    const before = this._entities.snapshot();
+    const count = this.shapes.length;
+    const idleBefore = this.idleHandler;
+    const factories = {
+      point: createPointGeometry,
+      line: createLineGeometry,
+      rect: createRectGeometry,
+      polygon: createPolygonGeometry,
+      circle: createCircleGeometry,
+      ellipse: createEllipseGeometry,
+    };
+    this._loadingGraphics = true;
+    try {
+      for (const shape of shapes) {
+        factories[shape.type](this, shape);
+        if (shape.type !== "point" && shape.type !== "rect") {
+          shape.pointsEntity = shape.points.map((point) =>
+            this.createPointEntity(point, {
+              size: Math.max(shape.style.pointSize - 4, 4),
+              color: shape.style.color,
+              outline: false,
+              clampToGround: shape.style.clampToGround,
+            }),
+          );
+        }
+        this._registerShape(shape);
+      }
+      this.setupIdleHandler();
+      return shapes.map((shape) => this.getGraphic(shape.id));
+    } catch (error) {
+      for (const entity of this._entities.snapshot()) {
+        if (!before.has(entity)) this._entities.remove(entity);
+      }
+      this.shapes.splice(count);
+      if (!idleBefore && this.idleHandler) {
+        this.idleHandler.destroy();
+        this.idleHandler = null;
+      }
+      throw error;
+    } finally {
+      this._loadingGraphics = false;
+    }
+  }
+
   // ======================= 绘制入口 =======================
 
   /**
@@ -694,7 +910,7 @@ export default class draw {
    * 绘制完成回调返回：{ id, positions, type }
    * @param {object} shape - 实体数据
    */
-  completeShape(shape) {
+  _registerShape(shape) {
     shape.pointsEntity.forEach((item) => {
       // 跳过主实体：点的主实体就是点本身需要一直显示；线的主实体不在 pointsEntity 中，不受影响
       if (item !== shape.mainEntity) {
@@ -713,6 +929,11 @@ export default class draw {
       shape.centerEntity.show = false; // 默认隐藏，编辑时显示
     }
     this.shapes.push(shape);
+  }
+
+  // 交互绘制保留原有完成事件、回调及自动编辑流程
+  completeShape(shape) {
+    this._registerShape(shape);
     this.setupIdleHandler(); // 开启空闲点击激活
     this.activeShape = null;
     this.destroy(); // 销毁绘制 handler

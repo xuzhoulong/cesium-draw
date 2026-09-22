@@ -54,9 +54,7 @@ export default function drawPolygon(
     }
   }
   // 主实体：面（hierarchy 引用 points，自动闭合，编辑拖拽自动更新）
-  shape.mainEntity = ctx.createPolygonEntity(shape.points, shape.style, {
-    id: shape.id,
-  });
+  createPolygonGeometry(ctx, shape);
 
   // 加点：顶点实体（画线样式：小号、无白边）
   const addPoint = (lonlat) => {
@@ -218,4 +216,10 @@ export default function drawPolygon(
     finishDraw();
   }, Cesium.ScreenSpaceEventType.LEFT_DOUBLE_CLICK);
   ctx._emitDrawStart(shape);
+}
+
+export function createPolygonGeometry(ctx, shape) {
+  shape.mainEntity = ctx.createPolygonEntity(shape.points, shape.style, {
+    id: shape.id,
+  });
 }
