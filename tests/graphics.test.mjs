@@ -274,6 +274,22 @@ draw.startEditing(draw.shapes.find((s) => s.id === item.id));
 assert.equal(draw.editShape, null);
 draw.removeGraphic(draw.shapes.find((s) => s.id === item.id));
 assert.equal(events.at(-1).name, "removeGraphic");
+// 支持按 ID 删除，重复删除及外部实体 ID 不触发事件。
+const byId = draw.addGraphic(fresh);
+const eventCount = events.length;
+draw.removeGraphic(byId.id);
+assert.equal(layer.entities.getById(byId.id), undefined);
+assert.equal(
+  draw.shapes.some((s) => s.mainEntity.id === byId.id),
+  false,
+);
+assert.equal(events.length, eventCount + 1);
+assert.equal(events.at(-1).name, "removeGraphic");
+draw.removeGraphic(byId.id);
+draw.removeGraphic("foreign");
+draw.removeGraphic(null);
+draw.removeGraphic();
+assert.equal(events.length, eventCount + 1);
 assert.equal(layer.entities.getById("foreign"), foreign);
 // 六种交互入口完成后，导出、序列化、清空、回显应保持一致。
 for (const input of inputs) {

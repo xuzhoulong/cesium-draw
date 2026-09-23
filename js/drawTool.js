@@ -1146,9 +1146,14 @@ export default class draw {
 
   /**
    * 删除一个实体（线 / 点 / 面通用）；删除后会触发 removeGraphic 事件
-   * @param {object} shape - 实体数据
+   * @param {object|string} shape - 实体数据或实体 ID；未找到 ID 时不执行删除
    */
   removeGraphic(shape) {
+    if (typeof shape === "string") {
+      shape = this.shapes.find((item) => item.mainEntity.id === shape);
+    }
+    if (!shape) return;
+
     // 如果删除的是正在编辑的实体，先退出编辑
     if (this.editShape === shape) {
       this.stopEditing();
