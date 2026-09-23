@@ -1086,7 +1086,7 @@ export default class draw {
     delBtn.style.cssText = "padding: 6px 20px; cursor: pointer; color: #d33;";
     delBtn.addEventListener("click", () => {
       this.hideContextMenu();
-      this.removeShape(shape);
+      this.removeGraphic(shape);
     });
 
     menu.appendChild(delBtn);
@@ -1148,7 +1148,7 @@ export default class draw {
    * 删除一个实体（线 / 点 / 面通用）；删除后会触发 removeGraphic 事件
    * @param {object} shape - 实体数据
    */
-  removeShape(shape) {
+  removeGraphic(shape) {
     // 如果删除的是正在编辑的实体，先退出编辑
     if (this.editShape === shape) {
       this.stopEditing();

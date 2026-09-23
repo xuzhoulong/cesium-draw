@@ -39,7 +39,7 @@ export default function drawLine(ctx, { id, data = [], style = {}, success }) {
     console.warn(`实体 id "${shape.id}" 已存在，旧实体将被移除`);
     const oldShape = ctx.shapes.find((s) => s.mainEntity.id === shape.id);
     if (oldShape) {
-      ctx.removeShape(oldShape);
+      ctx.removeGraphic(oldShape);
     } else {
       ctx._entities.removeById(shape.id);
     }

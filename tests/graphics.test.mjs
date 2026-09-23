@@ -272,7 +272,7 @@ draw.enableEdit = false;
 const item = draw.addGraphic(fresh);
 draw.startEditing(draw.shapes.find((s) => s.id === item.id));
 assert.equal(draw.editShape, null);
-draw.removeShape(draw.shapes.find((s) => s.id === item.id));
+draw.removeGraphic(draw.shapes.find((s) => s.id === item.id));
 assert.equal(events.at(-1).name, "removeGraphic");
 assert.equal(layer.entities.getById("foreign"), foreign);
 // 六种交互入口完成后，导出、序列化、清空、回显应保持一致。
