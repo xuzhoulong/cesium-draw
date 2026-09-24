@@ -8,180 +8,149 @@
  * @param {string} [options.id] - 自定义实体 id（可选，不传则由 Cesium 自动生成）
  * @param {Array} [options.data] - 初始坐标点（[[lon, lat], ...]），空数组表示交互绘制
  * @param {object} [options.style] - 样式（lineWidth / color / pointSize / clampToGround）
- * @param {Function} [options.success] - 绘制完成回调，返回该线坐标点数组
  */
-export default function drawLine(ctx, { id, data = [], style = {}, success }) {
-  // 开始新绘制前，退出可能存在的编辑状态并销毁遗留 handler
-  ctx.stopEditing();
-
-  const shape = {
-    type: "line",
-    id, // 用户自定义实体 id（可选）
-    points: [...data],
-    tempPoint: null, // 跟随鼠标的临时虚线端点
-    mainEntity: null, // 线实体
-    tempEntity: null, // 临时虚线实体
-    pointsEntity: [], // 点实体数组（与 points 一一对应）
-    success, // 完成回调
-    style: {
-      lineWidth: style.lineWidth ?? ctx.config.lineWidth,
-      color: style.color ?? ctx.config.color,
-      pointSize: style.pointSize ?? ctx.config.pointSize,
-      clampToGround: style.clampToGround ?? ctx.config.clampToGround,
-    },
-    firstPointTime: null, // 第一个点的点击时间（识别"双击画第一个点"）
-  };
-  ctx.activeShape = shape;
+export default function drawLine(ctx, { id, data = [], style = {} }) {
+  const shape = ctx._createDrawingShape("line", { id, style, data });
 
   // 主实体：实线（传了 id 则指定实体 id，不传由 Cesium 自动生成）
-  if (shape.id && ctx._entities.getById(shape.id)) {
-    // id 已存在：移除旧实体（含本工具 shapes 中的残留数据），避免创建冲突（覆盖旧实体）
-    console.warn(`实体 id "${shape.id}" 已存在，旧实体将被移除`);
-    const oldShape = ctx.shapes.find((s) => s.mainEntity.id === shape.id);
-    if (oldShape) {
-      ctx.removeGraphic(oldShape);
-    } else {
-      ctx._entities.removeById(shape.id);
-    }
-  }
-  createLineGeometry(ctx, shape);
+
+  createLineEntity(ctx, shape);
 
   // 加点：画线过程中的点（小号、无描边）
   const addPoint = (lonlat) => {
-    const entity = ctx.createPointEntity(lonlat, {
-      size: Math.max(shape.style.pointSize - 4, 4),
-      color: shape.style.color,
-      outline: false,
-      clampToGround: shape.style.clampToGround,
-    });
-    shape.pointsEntity.push(entity);
+    const entity = ctx._createControlPoint(shape, lonlat);
+    shape.controlPointEntities.push(entity);
     return entity;
   };
 
   // 完成绘制
   const finishDraw = () => {
     // 一个点都还没画时，双击不退出绘制（忽略本次双击，继续画）
-    if (shape.points.length === 0) return;
+    if (shape.controlPoints.length === 0) return;
     // 双击画第一个点：第一个点刚画（500ms 内）就触发双击，
     // 回退双击多加的点，只保留第一个点，不退出绘制
     if (
       shape.firstPointTime &&
       Date.now() - shape.firstPointTime < 500 &&
-      shape.points.length <= 2
+      shape.controlPoints.length <= 2
     ) {
-      while (shape.points.length > 1) {
-        ctx._entities.remove(shape.pointsEntity.pop());
-        shape.points.pop();
-        ctx.emit("drawRemovePoint", ctx._shapeResult(shape));
-        if (ctx.activeShape !== shape) return;
+      while (shape.controlPoints.length > 1) {
+        ctx._ownedEntities.remove(shape.controlPointEntities.pop());
+        shape.controlPoints.pop();
+        ctx.emit("drawRemovePoint", ctx._buildGraphicResult(shape));
+        if (ctx.drawingShape !== shape) return;
       }
       shape.firstPointTime = null;
       return;
     }
     shape.firstPointTime = null;
     // 移除临时虚线
-    ctx._entities.remove(shape.tempEntity);
-    shape.tempEntity = null;
-    if (shape.points.length < 2) {
+    ctx._ownedEntities.remove(shape.previewEntity);
+    shape.previewEntity = null;
+    if (shape.controlPoints.length < 2) {
       // 点数不足，整条线作废
-      ctx._entities.remove(shape.mainEntity);
-      shape.pointsEntity.forEach((item) => {
-        ctx._entities.remove(item);
+      ctx._ownedEntities.remove(shape.mainEntity);
+      shape.controlPointEntities.forEach((item) => {
+        ctx._ownedEntities.remove(item);
       });
       console.warn("请至少选择两个点");
-      ctx.activeShape = null;
-      ctx.destroy();
+      ctx.stopDraw();
       return;
     }
     ctx.completeShape(shape);
   };
-  // 供 drawTool.stopDraw() 调用（预留，停止绘制直接清理，不触发完成）
-  shape.finish = finishDraw;
 
   // 预置坐标数据的场景：直接画好并入库，画完马上进入编辑
-  if (shape.points.length > 1) {
-    shape.points.forEach(addPoint);
+  if (shape.controlPoints.length > 1) {
+    shape.controlPoints.forEach(addPoint);
     ctx._emitDrawStart(shape);
-    if (ctx.activeShape !== shape) return;
+    if (ctx.drawingShape !== shape) return;
     ctx.completeShape(shape);
     return;
   }
 
-  // 临时虚线，跟随鼠标移动（positions 返回最后一个点到鼠标位置的 tempPoint）
-  shape.tempEntity = ctx.createPolylineEntity(shape.points, shape.style, {
-    dash: true,
-    positions: () => shape.tempPoint,
-  });
+  // 临时虚线，跟随鼠标移动（positions 返回最后一个点到鼠标位置的 previewPosition）
+  shape.previewEntity = ctx.createPolylineEntity(
+    shape.controlPoints,
+    shape.style,
+    {
+      dash: true,
+      positions: () =>
+        shape.controlPoints.length && shape.previewPosition
+          ? ctx.positionsToCartesian([
+              shape.controlPoints.at(-1),
+              shape.previewPosition,
+            ])
+          : [],
+    },
+  );
 
-  ctx.handler = new Cesium.ScreenSpaceEventHandler(ctx.viewer.scene.canvas);
+  ctx.interactionHandler = ctx._createInteractionHandler();
   // 监听鼠标移动，动态更新临时虚线 + 显示经纬度标签
-  ctx.handler.setInputAction((e) => {
+  ctx.interactionHandler.setInputAction((e) => {
     const lonlat = ctx.pickLonLat(e.endPosition);
     if (!lonlat) {
-      ctx.removeLabel();
+      ctx._hideTooltip();
       return; // 如果没有点击到地面，返回
     }
-    ctx.addLabel(
+    ctx._showTooltip(
       Cesium.Cartesian3.fromDegrees(lonlat[0], lonlat[1]),
       `单击新增，右击删除，双击结束\n经度：${lonlat[0]}°\n纬度：${lonlat[1]}°`,
     );
     // 更新跟随鼠标的临时虚线（只要鼠标移动时）
-    if (shape.points.length > 0) {
-      const last = shape.points[shape.points.length - 1];
-      shape.tempPoint = [
-        Cesium.Cartesian3.fromDegrees(last[0], last[1]),
-        Cesium.Cartesian3.fromDegrees(lonlat[0], lonlat[1]),
-      ];
+    if (shape.controlPoints.length > 0) {
+      shape.previewPosition = lonlat;
     }
   }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
   // 监听左键点击，记录坐标并绘制线段
-  ctx.handler.setInputAction((e) => {
+  ctx.interactionHandler.setInputAction((e) => {
     const lonlat = ctx.pickLonLat(e.position);
-    if (!lonlat) return; // 如果没有点击到地面，返回
-    if (shape.points.length > 0) {
-      const last = shape.points[shape.points.length - 1];
+    if (!lonlat || !ctx._canAddPoint(shape, lonlat)) return;
+    if (shape.controlPoints.length > 0) {
+      const last = shape.controlPoints[shape.controlPoints.length - 1];
       if (last[0] === lonlat[0] && last[1] === lonlat[1]) return;
     }
     // 记录第一个点的点击时间，用于识别"双击画第一个点"场景
-    if (shape.points.length === 0) {
+    if (shape.controlPoints.length === 0) {
       shape.firstPointTime = Date.now();
     }
-    shape.points.push(lonlat); // 保存坐标
+    shape.controlPoints.push(lonlat); // 保存坐标
     addPoint(lonlat);
-    ctx.emit("drawAddPoint", ctx._shapeResult(shape));
+    ctx.emit("drawAddPoint", ctx._buildGraphicResult(shape));
   }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
 
   // 监听右键点击：删除最后一个点，删除后虚线立即重绘
-  ctx.handler.setInputAction((e) => {
-    if (shape.points.length === 0) return; // 没有点可删
-    ctx._entities.remove(shape.pointsEntity.pop());
-    shape.points.pop();
-    if (shape.points.length > 0) {
+  ctx.interactionHandler.setInputAction((e) => {
+    if (shape.controlPoints.length === 0) return; // 没有点可删
+    ctx._ownedEntities.remove(shape.controlPointEntities.pop());
+    shape.controlPoints.pop();
+    if (shape.controlPoints.length > 0) {
       // 从新的最后一个点连接到当前鼠标位置
       const lonlat = ctx.pickLonLat(e.position);
       if (lonlat) {
-        const last = shape.points[shape.points.length - 1];
-        shape.tempPoint = [
-          Cesium.Cartesian3.fromDegrees(last[0], last[1]),
-          Cesium.Cartesian3.fromDegrees(lonlat[0], lonlat[1]),
-        ];
+        shape.previewPosition = lonlat;
       }
     } else {
       // 没有点了，虚线消失
-      shape.tempPoint = [];
+      shape.previewPosition = null;
     }
-    ctx.emit("drawRemovePoint", ctx._shapeResult(shape));
+    ctx.emit("drawRemovePoint", ctx._buildGraphicResult(shape));
   }, Cesium.ScreenSpaceEventType.RIGHT_CLICK);
 
   // 监听双击，结束绘制
-  ctx.handler.setInputAction(() => {
+  ctx.interactionHandler.setInputAction(() => {
     finishDraw();
   }, Cesium.ScreenSpaceEventType.LEFT_DOUBLE_CLICK);
   ctx._emitDrawStart(shape);
 }
 
-export function createLineGeometry(ctx, shape) {
-  shape.mainEntity = ctx.createPolylineEntity(shape.points, shape.style, {
-    id: shape.id,
-  });
+export function createLineEntity(ctx, shape) {
+  shape.mainEntity = ctx.createPolylineEntity(
+    shape.controlPoints,
+    shape.style,
+    {
+      id: shape.id,
+      positions: () => ctx.positionsToCartesian(shape.controlPoints),
+    },
+  );
 }

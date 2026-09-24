@@ -4,140 +4,105 @@
  * 通过 ctx（Draw 实例）调用公共工具方法，与 drawLine / drawPoint 模块结构一致。
  *
  * 避坑说明（与既有模块一致）：
- * - 绘制前先 ctx.stopEditing() 清理遗留 handler，避免多实体互相干扰
+ * - 交互切换和会话取消由核心类统一管理
  * - 预览实体 hierarchy 用自定义回调（基于临时鼠标点），不误用 points 数组
- * - 完成后 points 转为 4 个角点，polygon 与顶点均引用同一数组，编辑拖拽自动更新
+ * - 始终保存两个对角控制点，渲染和导出时推导四个角点
  *
  * @param {object} ctx - Draw 实例（this）
  * @param {object} options - 画矩形参数
  * @param {string} [options.id] - 自定义实体 id（可选，不传则由 Cesium 自动生成）
  * @param {object} [options.style] - 样式（lineWidth / color / pointSize / clampToGround）
- * @param {Function} [options.success] - 绘制完成回调，返回 { id, positions, type }
  */
-export default function drawRect(ctx, { id, style = {}, success }) {
-  // 避坑：开始新绘制前，退出可能存在的编辑状态并销毁遗留 handler
-  ctx.stopEditing();
-
-  const shape = {
-    type: "rect",
-    id, // 用户自定义实体 id（可选）
-    points: [], // 绘制中：对角点 [p1, p2]；完成后：4 个角点
-    tempPoint: null, // 跟随鼠标的临时对角点（预览用）
-    mainEntity: null, // 矩形实体（polygon）
-    tempEntity: null, // 预览矩形实体（跟随鼠标）
-    pointsEntity: [], // 4 个角点实体（编辑拖拽用）
-    success, // 完成回调
-    style: {
-      lineWidth: style.lineWidth ?? ctx.config.lineWidth,
-      color: style.color ?? ctx.config.color,
-      pointSize: style.pointSize ?? ctx.config.pointSize,
-      clampToGround: style.clampToGround ?? ctx.config.clampToGround,
-    },
-  };
-  ctx.activeShape = shape;
+export default function drawRect(ctx, { id, style = {} }) {
+  const shape = ctx._createDrawingShape("rect", { id, style });
 
   // 由两个对角点计算 4 个角（顺时针）
-  const toCorners = rectCorners;
+  const toCorners = getRectangleCorners;
 
   // 避坑：预览矩形 hierarchy 用自定义回调，根据当前对角点实时计算，不误用 points 数组
-  shape.tempEntity = ctx.createPolygonEntity([], shape.style, {
+  shape.previewEntity = ctx.createPolygonEntity([], shape.style, {
     positions: () => {
-      if (shape.points.length === 0) return [];
-      return toCorners(shape.points[0], shape.tempPoint || shape.points[0]);
+      if (shape.controlPoints.length === 0) return [];
+      return toCorners(
+        shape.controlPoints[0],
+        shape.previewPosition || shape.controlPoints[0],
+      );
     },
   });
-  shape.tempEntity.show = false;
+  shape.previewEntity.show = false;
 
-  ctx.handler = new Cesium.ScreenSpaceEventHandler(ctx.viewer.scene.canvas);
+  ctx.interactionHandler = ctx._createInteractionHandler();
   // 监听鼠标移动：更新预览矩形 + 显示坐标标签
-  ctx.handler.setInputAction((e) => {
+  ctx.interactionHandler.setInputAction((e) => {
     const lonlat = ctx.pickLonLat(e.endPosition);
     if (!lonlat) {
-      ctx.removeLabel();
+      ctx._hideTooltip();
       return;
     }
-    ctx.addLabel(
+    ctx._showTooltip(
       Cesium.Cartesian3.fromDegrees(lonlat[0], lonlat[1]),
       `左键点击确定对角点，右键撤销\n经度：${lonlat[0]}°\n纬度：${lonlat[1]}°`,
     );
     // 已有第一点时，跟随鼠标更新预览矩形
-    if (shape.points.length > 0) {
-      shape.tempPoint = lonlat;
-      shape.tempEntity.show = true;
+    if (shape.controlPoints.length > 0) {
+      shape.previewPosition = lonlat;
+      shape.previewEntity.show = true;
     }
   }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
 
   // 监听左键点击：第一点定起点，第二点定对角完成
-  ctx.handler.setInputAction((e) => {
+  ctx.interactionHandler.setInputAction((e) => {
     const lonlat = ctx.pickLonLat(e.position);
-    if (!lonlat) return; // 如果没有点击到地面，返回
-    if (shape.points.length > 0) {
-      const last = shape.points[shape.points.length - 1];
+    if (!lonlat || !ctx._canAddPoint(shape, lonlat)) return;
+    if (shape.controlPoints.length > 0) {
+      const last = shape.controlPoints[shape.controlPoints.length - 1];
       if (last[0] === lonlat[0] && last[1] === lonlat[1]) return;
     }
-    shape.points.push(lonlat);
-    if (shape.points.length < 2) {
+    shape.controlPoints.push(lonlat);
+    if (shape.controlPoints.length < 2) {
       // 第一点：显示预览矩形（跟随鼠标）
-      shape.tempEntity.show = true;
-      ctx.emit("drawAddPoint", ctx._shapeResult(shape));
+      shape.previewEntity.show = true;
+      ctx.emit("drawAddPoint", ctx._buildGraphicResult(shape));
       return;
     }
-    ctx.emit("drawAddPoint", ctx._shapeResult(shape));
-    if (ctx.activeShape !== shape) return;
+    ctx.emit("drawAddPoint", ctx._buildGraphicResult(shape));
+    if (ctx.drawingShape !== shape) return;
     // 第二点：完成绘制
     finishRect();
   }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
 
   // 监听右键点击：撤销最后一个对角点，预览重绘
-  ctx.handler.setInputAction((e) => {
-    if (shape.points.length === 0) return; // 没有点可撤销
-    shape.points.pop();
-    if (shape.points.length === 0) {
+  ctx.interactionHandler.setInputAction((e) => {
+    if (shape.controlPoints.length === 0) return; // 没有点可撤销
+    shape.controlPoints.pop();
+    if (shape.controlPoints.length === 0) {
       // 没有点了，预览矩形消失
-      shape.tempEntity.show = false;
-      shape.tempPoint = null;
+      shape.previewEntity.show = false;
+      shape.previewPosition = null;
     } else {
       // 回到第一点状态，预览矩形基于当前鼠标位置重绘
       const lonlat = ctx.pickLonLat(e.position);
       if (lonlat) {
-        shape.tempPoint = lonlat;
-        shape.tempEntity.show = true;
+        shape.previewPosition = lonlat;
+        shape.previewEntity.show = true;
       }
     }
-    ctx.emit("drawRemovePoint", ctx._shapeResult(shape));
+    ctx.emit("drawRemovePoint", ctx._buildGraphicResult(shape));
   }, Cesium.ScreenSpaceEventType.RIGHT_CLICK);
 
   // 完成绘制
   function finishRect() {
-    if (shape.points.length < 2) return;
+    if (shape.controlPoints.length < 2) return;
     // 移除预览矩形
-    ctx._entities.remove(shape.tempEntity);
-    shape.tempEntity = null;
-
-    // 避坑：传了 id 且已存在时，先移除旧实体（含 shapes 数据），覆盖创建
-    if (shape.id && ctx._entities.getById(shape.id)) {
-      console.warn(`实体 id "${shape.id}" 已存在，旧实体将被移除`);
-      const oldShape = ctx.shapes.find((s) => s.mainEntity.id === shape.id);
-      if (oldShape) {
-        ctx.removeGraphic(oldShape);
-      } else {
-        ctx._entities.removeById(shape.id);
-      }
-    }
-
-    // 保持对角点数据（shape.points = [a, b] 两个对角点），创建正式矩形
-    // 避坑：polygon hierarchy 用自定义回调，由对角点实时推导 4 角，编辑联动时自动更新
-    createRectGeometry(ctx, shape);
-
-    // 完成：入库、回调、根据配置进入编辑
+    ctx._ownedEntities.remove(shape.previewEntity);
+    shape.previewEntity = null;
+    createRectangleEntity(ctx, shape);
     ctx.completeShape(shape);
   }
-  // 供 drawTool.stopDraw() 调用（预留，停止绘制直接清理，不触发完成）
-  shape.finish = finishRect;
   ctx._emitDrawStart(shape);
 }
 
-export function rectCorners(a, b) {
+export function getRectangleCorners(a, b) {
   return [
     [a[0], a[1]],
     [b[0], a[1]],
@@ -147,31 +112,16 @@ export function rectCorners(a, b) {
 }
 
 // 交互与回显共用四角生成及对角点联动
-export function createRectGeometry(ctx, shape) {
-  shape.mainEntity = ctx.createPolygonEntity(shape.points, shape.style, {
+export function createRectangleEntity(ctx, shape) {
+  shape.mainEntity = ctx.createPolygonEntity(shape.controlPoints, shape.style, {
     id: shape.id,
-    positions: () => rectCorners(...shape.points),
-  });
-  rectCorners(...shape.points).forEach((point) => {
-    shape.pointsEntity.push(
-      ctx.createPointEntity(point, {
-        size: Math.max(shape.style.pointSize - 4, 4),
-        color: shape.style.color,
-        outline: false,
-        clampToGround: shape.style.clampToGround,
-      }),
-    );
+    positions: () => getRectangleCorners(...shape.controlPoints),
   });
   shape.updatePoint = (index, point) => {
-    const [a, b] = shape.points;
+    const [a, b] = shape.controlPoints;
     const x = index === 0 || index === 3 ? a : b;
     const y = index === 0 || index === 1 ? a : b;
     x[0] = point[0];
     y[1] = point[1];
-    rectCorners(a, b).forEach((corner, i) => {
-      shape.pointsEntity[i].position.setValue(
-        Cesium.Cartesian3.fromDegrees(...corner),
-      );
-    });
   };
 }

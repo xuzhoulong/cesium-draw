@@ -16,7 +16,10 @@ export function startDraw(draw, type) {
     // .startDraw({ type, style: { color: "#0092ff", clampToGround: true } })
     // 不贴地
     .startDraw({ type, style: { color: "#0092ff" } })
-    .then((result) => console.log("绘制完成", result));
+    .then((result) => console.log("绘制完成", result))
+    .catch((error) => {
+      if (error.name !== "AbortError") console.error("绘制失败", error);
+    });
 }
 
 /**

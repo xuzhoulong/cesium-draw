@@ -9,15 +9,74 @@
 <html>
   <head>
     <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DrawTool 全功能演示</title>
     <!-- Cesium 主库：全局命名空间 Cesium -->
     <script src="./libs/Cesium/Cesium.js"></script>
     <!-- Cesium 自带控件（Animation/Timeline/BaseLayerPicker 等）的样式 -->
     <link href="./libs/Cesium/Widgets/widgets.css" rel="stylesheet" />
   </head>
   <style>
-    /* 或者只隐藏 Cesium 的 Logo 和文字 */
-    .cesium-viewer-bottom {
-      display: none !important;
+    .demo-panel {
+      position: absolute;
+      z-index: 10;
+      top: 10px;
+      left: 10px;
+      width: min(360px, calc(100vw - 330px));
+      max-height: calc(100vh - 70px);
+      overflow: auto;
+      box-sizing: border-box;
+      background: rgba(18, 27, 42, 0.94);
+      color: #e2e8f0;
+      border: 1px solid #475569;
+      border-radius: 8px;
+      padding: 14px;
+      font: 13px/1.6 sans-serif;
+    }
+    .demo-panel h1 {
+      font-size: 18px;
+      margin: 0 0 8px;
+    }
+    .demo-panel summary {
+      cursor: pointer;
+      font-weight: bold;
+    }
+    .demo-panel textarea {
+      box-sizing: border-box;
+      width: 100%;
+      height: 160px;
+      background: #0f172a;
+      color: #e2e8f0;
+      border: 1px solid #64748b;
+      padding: 8px;
+      resize: vertical;
+    }
+    .demo-panel pre {
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      max-height: 220px;
+      overflow: auto;
+      font-size: 11px;
+    }
+    #demo-status {
+      color: #67e8f9;
+    }
+    .demo-menu-theme .x-contextmenu {
+      background: #172554;
+      color: #eff6ff;
+      border-color: #60a5fa;
+      border-radius: 10px;
+    }
+    .demo-menu-theme .x-contextmenu-item:hover {
+      background: #1e40af;
+    }
+    @media (max-width: 700px) {
+      .demo-panel {
+        top: auto;
+        bottom: 30px;
+        width: calc(100vw - 20px);
+        max-height: 28vh;
+      }
     }
   </style>
 
@@ -33,6 +92,63 @@
     "
   >
     <div id="map" style="margin: 0 auto; width: 100%; height: 100%"></div>
+    <aside class="demo-panel" aria-label="功能用例与操作结果">
+      <h1>DrawTool 功能演示</h1>
+      <p id="demo-status" role="status">正在初始化…</p>
+      <details open>
+        <summary>操作用例指南</summary>
+        <ol>
+          <li>
+            右侧选择 Promise、回调或类型方法，设置样式后绘制六类图形。ID
+            留空自动生成；同 ID 绘制会删除旧图形，取消不恢复。
+          </li>
+          <li>
+            点单击完成；线/多边形单击加点、右键撤销、双击完成；矩形/圆点两次；椭圆依次选中心、长轴点、短轴点。
+          </li>
+          <li>
+            停止绘制、切换类型、清空、销毁会取消
+            Promise；重新绘制只清除控制点，保留会话。线不足两点或多边形不足三点双击会作废。
+          </li>
+          <li>
+            点击实体、右键菜单或面板进入编辑。拖动顶点调整，橙色手柄整体平移；半透明手柄拖动插点，右键顶点删除。两点线段插点手柄位于四分之一处。
+          </li>
+          <li>
+            运行时关闭编辑会立即退出；自动编辑只对交互绘制生效。圆/椭圆中心用于平移，轴端用于改尺寸。
+          </li>
+          <li>
+            回显须先停止绘制和编辑。单个/六类样例可反复追加；JSON 中已有 ID
+            会拒绝，不覆盖。往返用例：导出 → 清空图形 → 从 JSON 追加。
+          </li>
+          <li>
+            观察全部十类事件与完成快照。关闭日志仅停止显示；off/on
+            按钮演示解除与恢复监听。编辑后再查询可对比完成时的快照。
+          </li>
+          <li>
+            选择外部共享图层后重建：黄色点属于业务；clear/destroy
+            后仍保留。再次重建由演示页主动移除旧业务图层。销毁幂等，必须重建才能继续操作。
+          </li>
+          <li>
+            非法坐标、退化图形、非法样式及重复 ID
+            用例验证整批拒绝。右下角菜单验证边界定位；顶点删除菜单需有效索引及足够点数。
+          </li>
+          <li>
+            可开启按需渲染后重复绘制、编辑、显隐。快速拖拽后的相机漂移仍是已知待排查问题；圆/椭圆仅用于局部近似绘制。
+          </li>
+        </ol>
+      </details>
+      <details open>
+        <summary>JSON 数据（导出 / 编辑 / 追加）</summary>
+        <label for="demo-json"
+          >格式为图形数组；单对象请用 drawDemo.addGraphic(data)</label
+        >
+        <textarea id="demo-json" spellcheck="false" aria-label="图形 JSON">
+[]</textarea>
+      </details>
+      <details open>
+        <summary>事件与操作日志（最近 60 条）</summary>
+        <pre id="demo-output" aria-label="操作日志"></pre>
+      </details>
+    </aside>
 
     <script type="module">
       import Draw from "./js/drawTool.js";
@@ -67,13 +183,13 @@
       // viewer.imageryLayers.addImageryProvider(xyz);
 
       // 加载单张图片
-      var imageryProvider = new Cesium.SingleTileImageryProvider({
+      const imageryProvider = new Cesium.SingleTileImageryProvider({
         url: "./Earth_3.jpg",
       });
       viewer.imageryLayers.addImageryProvider(imageryProvider);
 
       viewer.camera.setView({
-        destination: Cesium.Cartesian3.fromDegrees(110, 40, 7000000),
+        destination: Cesium.Cartesian3.fromDegrees(112, 31, 1500000),
         // orientation: {
         //   heading: 0, // 朝向（弧度）
         //   pitch: -Math.PI / 4, // 俯仰角（弧度），负值表示俯视
@@ -83,63 +199,39 @@
 
       // const drawLayer = new Cesium.CustomDataSource("业务绘制图层");
       // await viewer.dataSources.add(drawLayer);
-      let draw = new Draw(viewer, {
+      const draw = new Draw(viewer, {
         // dataSource: drawLayer,
         enableEdit: true,
         autoEdit: false,
-        style: { lineWidth: 2, color: "red" },
+        style: { lineWidth: 2, color: "#0092ff" },
       });
 
-      draw.on("drawStart", (data) => {
-        console.log("开始绘制", data);
-        // data = { id: "xxx", positions: [], type: "line" }
+      // 面板集中管理十类事件与生命周期，重建时解绑旧实例并绑定新实例。
+      const gui = initGui(draw, viewer, {
+        jsonEditor: document.getElementById("demo-json"),
+        output: document.getElementById("demo-output"),
+        status: document.getElementById("demo-status"),
+        onCoordinates: (result) =>
+          console.log("业务完成回调（独立快照）", result),
       });
-      draw.on("drawAddPoint", (data) => {
-        console.log("绘制新增了点", data); // { id, positions, type }
+      // 控制台和 GUI 使用同一组用例；draw getter 始终返回当前实例。
+      window.drawDemo = gui.demo;
+      // 示例：await drawDemo.start("line", "Promise")，取消返回 null。
+      // 示例：drawDemo.addGraphic({ type: "point", positions: [[110, 30]] })。
+      // 示例：const json = drawDemo.exportJSON(); drawDemo.clear(); drawDemo.loadJSON(json)。
+      // 单图编辑与删除使用面板选择器；drawDemo.draw.getGraphic(id) 获取最新数据。
+      // 外部图层：drawDemo.state.layerMode = "外部共享图层"; await drawDemo.recreate()。
+      // 销毁可重复调用；重建不会自动加载旧数据，请自行保留 JSON。
+      draw.ready.catch((error) => {
+        document.getElementById("demo-status").textContent =
+          `图层初始化失败：${error.message}`;
       });
-      draw.on("drawRemovePoint", (data) => {
-        console.log("绘制删除了点", data); // { id, positions, type }
+      window.addEventListener("pagehide", (event) => {
+        if (!event.persisted) {
+          gui.destroy();
+          viewer.destroy();
+        }
       });
-      draw.on("drawEnd", (data) => {
-        console.log("结束绘制", data);
-        // data = { id: "xxx", positions: [[lon,lat],...], type: "line" }
-      });
-      draw.on("editStart", (data) => {
-        console.log("开始编辑", data);
-        // data = { id: "xxx", positions: [[lon,lat],...], type: "line" }
-      });
-      draw.on("editAddPoint", (data) => {
-        console.log("编辑新增了点", data); // { id, positions, type }
-      });
-      draw.on("editRemovePoint", (data) => {
-        console.log("编辑删除了点", data); // { id, positions, type }
-      });
-      draw.on("editMovePoint", (data) => {
-        console.log("编辑修改了点", data);
-        // data = { id: "xxx", positions: [[lon,lat],...], type: "line" }
-      });
-      draw.on("editStop", (data) => {
-        console.log("停止编辑", data);
-        // data = { id: "xxx", positions: [[lon,lat],...], type: "line" }
-      });
-      draw.on("removeGraphic", (data) => {
-        console.log("删除实体", data);
-        // data = { id: "xxx", positions: [[lon,lat],...], type: "line" }
-      });
-
-      // 控制台按需调用，不自动保存、不自动清空；已有 ID 会拒绝加载。
-      window.drawDemo = {
-        draw,
-        // 接受图形对象；不传 id 时自动生成，返回结果包含生成的 id。
-        addGraphic: (data) => draw.addGraphic(data),
-        exportJSON: () => JSON.stringify(draw.getGraphics()),
-        loadJSON: (text) => draw.loadGraphics(JSON.parse(text)),
-      };
-      // 在 drawEnd / editStop 中调用 draw.getGraphic(data.id)，可获取含样式的保存快照。
-      // 全量替换前由业务显式 draw.clear()，注意它会触发 removeGraphic。
-
-      // 初始化 lil-gui 面板（开始画线 / 清除）
-      initGui(draw, viewer);
     </script>
   </body>
 </html>
