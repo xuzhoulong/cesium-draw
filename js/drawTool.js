@@ -32,6 +32,7 @@ export default class DrawTool {
    * @param {object} viewer - Cesium Viewer 实例
    * @param {object} [config] - 实例配置
    * @param {Cesium.CustomDataSource} [config.dataSource] - 外部图层由调用方管理
+   * @param {boolean} [config.enabledRightMenu=true] - 是否启用右键菜单（false 时禁用所有场景的右键菜单）
    * @param {boolean} [config.enableEdit=true] - 是否支持编辑（false 时禁用所有编辑入口，autoEdit 随之失效）
    * @param {boolean} [config.autoEdit=true] - 绘制完成后是否自动激活编辑（仅在 enableEdit 为 true 时生效）
    * @param {object} [config.style] - 默认样式（lineWidth / color / pointSize / clampToGround）
@@ -91,6 +92,8 @@ export default class DrawTool {
       // 是否贴地（线 / 矩形 / 多边形 / 圆 / 椭圆），默认 false 不贴地
       clampToGround: style.clampToGround ?? config?.clampToGround ?? false,
     };
+    // 是否启用右键菜单（默认 true）；为 false 时禁用所有场景的右键菜单
+    this.enabledRightMenu = config?.enabledRightMenu ?? true;
     // 是否支持编辑（默认 true）；为 false 时禁用所有编辑入口，autoEdit 随之失效
     this.enableEdit = config?.enableEdit ?? true;
     // 绘制完成后是否自动激活编辑（默认 true，仅在 enableEdit 为 true 时生效）
@@ -1197,10 +1200,17 @@ export default class DrawTool {
         // 命中实体：在鼠标位置显示提示（启用编辑时提示可编辑，否则仅提示右键菜单）
         const lonlat = this.pickLonLat(e.endPosition);
         if (lonlat) {
-          this._showTooltip(
-            Cesium.Cartesian3.fromDegrees(lonlat[0], lonlat[1]),
-            this.enableEdit ? "左键点击进行编辑，右键菜单" : "右键菜单",
-          );
+          const tip = [];
+          if (this.enableEdit) tip.push("左键点击进行编辑");
+          if (this.enabledRightMenu) tip.push("右键菜单");
+          if (tip.length > 0) {
+            this._showTooltip(
+              Cesium.Cartesian3.fromDegrees(lonlat[0], lonlat[1]),
+              tip.join("，"),
+            );
+          } else {
+            this._hideTooltip();
+          }
         }
       } else {
         this._hideTooltip();
@@ -1215,8 +1225,9 @@ export default class DrawTool {
         this.startEditing(shape);
       }
     }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
-    // 右键实体：弹出右键菜单
+    // 右键实体：弹出右键菜单（仅在启用右键菜单时生效）
     this.idleHandler.setInputAction((e) => {
+      if (!this.enabledRightMenu) return;
       if (this.drawingShape || this.editing) return;
       const shape = this.findShapeByFeature(this.viewer.scene.pick(e.position));
       if (shape) {
@@ -1654,8 +1665,9 @@ export default class DrawTool {
       // 命中当前实体自身 → 保持编辑，不做任何事
     }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
 
-    // 右键：命中顶点时菜单顶部追加“删除该点”；命中其他位置显示常规菜单
+    // 右键：命中顶点时菜单顶部追加"删除该点"；命中其他位置显示常规菜单（仅在启用右键菜单时生效）
     this.interactionHandler.setInputAction((e) => {
+      if (!this.enabledRightMenu) return;
       const feature = this.viewer.scene.pick(e.position);
       if (!Cesium.defined(feature)) return;
       // 检测是否右键了当前编辑形状的顶点
@@ -1664,7 +1676,7 @@ export default class DrawTool {
       );
       const hitShape = this.findShapeByFeature(feature);
       if (hitShape) {
-        // 传入 vertexIndex（命中顶点时 >= 0，否则 -1），showContextMenu 内部判断是否显示“删除该点”
+        // 传入 vertexIndex（命中顶点时 >= 0，否则 -1），showContextMenu 内部判断是否显示"删除该点"
         this.showContextMenu(e.position.x, e.position.y, hitShape, {
           vertexIndex,
         });

@@ -2,7 +2,7 @@
  * @Author: xubingchao
  * @Date: 2026-09-15 13:43:12
  * @LastEditors: xubingchao
- * @LastEditTime: 2026-09-22 17:27:44
+ * @LastEditTime: 2026-10-08 16:30:44
  * @FilePath: \cesium-draw\index.html
 -->
 <!doctype html>
@@ -201,7 +201,8 @@
       // await viewer.dataSources.add(drawLayer);
       const draw = new Draw(viewer, {
         // dataSource: drawLayer,
-        enableEdit: true,
+        enabledRightMenu: false,
+        enableEdit: false,
         autoEdit: false,
         style: { lineWidth: 2, color: "#0092ff" },
       });

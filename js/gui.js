@@ -109,6 +109,7 @@ export default function initGui(draw, viewer, config = {}) {
     ...draw.defaultStyle,
     enableEdit: draw.enableEdit,
     autoEdit: draw.autoEdit,
+    enabledRightMenu: draw.enabledRightMenu,
     layerVisible: true,
     eventLogging: true,
     requestRenderMode: viewer.scene.requestRenderMode,
@@ -488,6 +489,15 @@ export default function initGui(draw, viewer, config = {}) {
       run(() => {
         alive();
         current.autoEdit = state.autoEdit;
+      }),
+    );
+  edit
+    .add(state, "enabledRightMenu")
+    .name("右键菜单")
+    .onChange(
+      run(() => {
+        alive();
+        current.enabledRightMenu = state.enabledRightMenu;
       }),
     );
   selectedController = edit
