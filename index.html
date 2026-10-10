@@ -2,7 +2,7 @@
  * @Author: xubingchao
  * @Date: 2026-09-15 13:43:12
  * @LastEditors: xubingchao
- * @LastEditTime: 2026-10-10 09:50:21
+ * @LastEditTime: 2026-10-10 10:26:04
  * @FilePath: \cesium-draw\index.html
 -->
 <!doctype html>
@@ -205,9 +205,10 @@
         enabledRightMenu: false,
         enableEdit: false,
         autoEdit: false,
+        isContinued: false,
         style: { lineWidth: 2, color: "#0092ff" },
       });
-
+      window.draw = draw;
       // 进入绘制状态：交互绘制 positions 为 []，id 与完成后的实体一致
       // 直接传入预置坐标时，positions 为初始坐标快照
       draw.on("drawStart", (data) => {

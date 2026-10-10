@@ -35,6 +35,7 @@ export default class DrawTool {
    * @param {boolean} [config.enabledRightMenu=true] - 是否启用右键菜单（false 时禁用所有场景的右键菜单）
    * @param {boolean} [config.enableEdit=true] - 是否支持编辑（false 时禁用所有编辑入口，autoEdit 随之失效）
    * @param {boolean} [config.autoEdit=true] - 绘制完成后是否自动激活编辑（仅在 enableEdit 为 true 时生效）
+   * @param {boolean} [config.isContinued=false] - 是否连续绘制（true 时绘制完成后自动开始同类型下一次绘制）
    * @param {object} [config.style] - 默认样式（lineWidth / color / pointSize / clampToGround）
    *   也可直接传旧写法：{ lineWidth, color, pointSize, clampToGround }
    */
@@ -98,6 +99,8 @@ export default class DrawTool {
     this.enableEdit = config?.enableEdit ?? true;
     // 绘制完成后是否自动激活编辑（默认 true，仅在 enableEdit 为 true 时生效）
     this.autoEdit = config?.autoEdit ?? true;
+    // 是否连续绘制（默认 false）；为 true 时绘制完成后自动开始同类型下一次绘制
+    this.isContinued = config?.isContinued ?? false;
     this.interactionHandler = null; // 当前绘制 / 编辑的事件处理器
     this.idleHandler = null; // 空闲状态下的"点击激活编辑"处理器
     this.shapes = []; // 所有已绘制完成的实体数据（线 / 点 / 面）
@@ -840,7 +843,7 @@ export default class DrawTool {
       return;
     }
     this.hideContextMenu();
-    const session = { reject, success: options.success };
+    const session = { reject, success: options.success, type, style };
     this._session = session;
     const before = this._ownedEntities.snapshot();
     try {
@@ -1161,6 +1164,24 @@ export default class DrawTool {
         Promise.resolve(returned).catch((error) => console.error(error));
     } catch (error) {
       console.error(error);
+    }
+    // 连续绘制：绘制完成后自动开始同类型下一次绘制
+    if (
+      this.isContinued &&
+      !this._destroyed &&
+      revision === this._revision &&
+      !this.drawingShape &&
+      session?.type
+    ) {
+      this._startDrawing(
+        {
+          type: session.type,
+          style: session.style,
+          success: session.success,
+        },
+        session.reject,
+      );
+      return;
     }
     // 根据配置决定是否自动激活编辑（需 enableEdit 且 autoEdit，二者默认均为 true）
     if (

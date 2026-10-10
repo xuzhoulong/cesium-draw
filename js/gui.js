@@ -110,6 +110,7 @@ export default function initGui(draw, viewer, config = {}) {
     enableEdit: draw.enableEdit,
     autoEdit: draw.autoEdit,
     enabledRightMenu: draw.enabledRightMenu,
+    isContinued: draw.isContinued,
     layerVisible: true,
     eventLogging: true,
     requestRenderMode: viewer.scene.requestRenderMode,
@@ -427,6 +428,8 @@ export default function initGui(draw, viewer, config = {}) {
           ...(externalLayer ? { dataSource: externalLayer } : {}),
           enableEdit: state.enableEdit,
           autoEdit: state.autoEdit,
+          enabledRightMenu: state.enabledRightMenu,
+          isContinued: state.isContinued,
           style: style(),
         });
         destroyed = false;
@@ -498,6 +501,15 @@ export default function initGui(draw, viewer, config = {}) {
       run(() => {
         alive();
         current.enabledRightMenu = state.enabledRightMenu;
+      }),
+    );
+  edit
+    .add(state, "isContinued")
+    .name("连续绘制")
+    .onChange(
+      run(() => {
+        alive();
+        current.isContinued = state.isContinued;
       }),
     );
   selectedController = edit
