@@ -31,8 +31,19 @@ const layer = new C.CustomDataSource("测试共享图层");
 const foreign = layer.entities.add({ id: "foreign" });
 let picked;
 const viewer = {
+  canvas: { style: {} },
   scene: { canvas: {}, pick: () => picked, screenSpaceCameraController: {} },
   cesiumWidget: { screenSpaceEventHandler: { removeInputAction() {} } },
+  // 画布容器桩：记录 mouseenter/mouseleave 监听器供用例触发
+  container: {
+    _listeners: new Map(),
+    addEventListener(type, handler) {
+      this._listeners.set(type, handler);
+    },
+    removeEventListener(type) {
+      this._listeners.delete(type);
+    },
+  },
 };
 const draw = new Draw(viewer, { dataSource: layer, autoEdit: true });
 const events = [];
@@ -468,7 +479,7 @@ for (const type of ["line", "polygon"]) {
   const shape = tool.shapes[0];
   const controller = tool.viewer.scene.screenSpaceCameraController;
   const previous = { ...controller };
-  document.body.style.cursor = "help";
+  viewer.canvas.style.cursor = "help";
   tool.startEditing(shape);
   picked = { id: shape.controlPointEntities[0] };
   tool.interactionHandler.actions.get(C.ScreenSpaceEventType.LEFT_DOWN)({
@@ -477,7 +488,7 @@ for (const type of ["line", "polygon"]) {
   assert.equal(controller.enableRotate, false);
   tool.enableEdit = false;
   assert.deepEqual(controller, previous);
-  assert.equal(document.body.style.cursor, "help");
+  assert.equal(viewer.canvas.style.cursor, "help");
   assert.equal(tool.editingShape, null);
   assert.equal(
     tool.dataSource.entities.values.length,
@@ -753,13 +764,13 @@ for (const type of ["circle", "ellipse"]) {
 // 绘制及各类拖拽使用 crosshair，结束后恢复业务原光标。
 for (const input of inputs) {
   const tool = makeTool();
-  document.body.style.cursor = "help";
+  viewer.canvas.style.cursor = "help";
   tool.startDraw({ type: input.type, success() {} });
-  assert.equal(document.body.style.cursor, "crosshair");
+  assert.equal(viewer.canvas.style.cursor, "crosshair");
   tool.clearDrawing();
-  assert.equal(document.body.style.cursor, "crosshair");
+  assert.equal(viewer.canvas.style.cursor, "crosshair");
   tool.stopDraw();
-  assert.equal(document.body.style.cursor, "help");
+  assert.equal(viewer.canvas.style.cursor, "help");
   tool.addGraphic(input);
   const shape = tool.shapes[0];
   tool.startEditing(shape);
@@ -776,12 +787,50 @@ for (const input of inputs) {
     tool.interactionHandler.actions.get(C.ScreenSpaceEventType.LEFT_DOWN)({
       position,
     });
-    assert.equal(document.body.style.cursor, "crosshair");
+    assert.equal(viewer.canvas.style.cursor, "crosshair");
     tool.interactionHandler.actions.get(C.ScreenSpaceEventType.LEFT_UP)();
-    assert.equal(document.body.style.cursor, "help");
+    assert.equal(viewer.canvas.style.cursor, "help");
   }
   tool.destroy();
-  assert.equal(document.body.style.cursor, "help");
+  assert.equal(viewer.canvas.style.cursor, "help");
+}
+// 画布鼠标移出/移入：移出隐藏提示并重置光标，移入按绘制/编辑状态或基线恢复。
+{
+  const tool = makeTool();
+  const fire = (type) => tool.viewer.container._listeners.get(type)();
+  viewer.canvas.style.cursor = "help";
+  // 空闲态移出：保存基线并置默认；可见提示被隐藏
+  tool._showTooltip(C.Cartesian3.fromDegrees(110, 30), "提示");
+  assert.ok(tool.label);
+  fire("mouseleave");
+  assert.equal(viewer.canvas.style.cursor, "default");
+  assert.equal(tool.label, null);
+  // 空闲态移入：恢复业务基线光标
+  fire("mouseenter");
+  assert.equal(viewer.canvas.style.cursor, "help");
+  // 绘制中移出再移入：恢复 crosshair
+  tool.startDraw({ type: "line", success() {} });
+  assert.equal(viewer.canvas.style.cursor, "crosshair");
+  fire("mouseleave");
+  assert.equal(viewer.canvas.style.cursor, "default");
+  fire("mouseenter");
+  assert.equal(viewer.canvas.style.cursor, "crosshair");
+  // 绘制中移出后在画布外结束：移入不得误恢复 crosshair
+  fire("mouseleave");
+  tool.stopDraw();
+  assert.equal(viewer.canvas.style.cursor, "help");
+  fire("mouseenter");
+  assert.equal(viewer.canvas.style.cursor, "help");
+  // 画布外开始绘制：结束后仍恢复业务原光标（基线被 _cursorBefore 消费）
+  fire("mouseleave");
+  tool.startDraw({ type: "point", success() {} });
+  assert.equal(viewer.canvas.style.cursor, "crosshair");
+  tool.stopDraw();
+  assert.equal(viewer.canvas.style.cursor, "help");
+  tool.destroy();
+  // 销毁后容器监听器被清理
+  assert.equal(tool.viewer.container._listeners.has("mouseleave"), false);
+  assert.equal(tool.viewer.container._listeners.has("mouseenter"), false);
 }
 // 演示控制层：仅替换 lil-gui DOM 层，仍使用真实 DrawTool 与 Cesium 数据模型。
 class DemoGUI {

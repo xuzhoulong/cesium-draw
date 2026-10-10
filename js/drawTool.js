@@ -110,6 +110,37 @@ export default class DrawTool {
     this.contextMenu = null; // 右键菜单 DOM
     this.closeContextMenuHandler = () => this.hideContextMenu(); // 关闭右键菜单的处理器
     this._events = new Map();
+    // 鼠标移出画布状态管理
+    this._isMouseOutside = false; // 鼠标是否在画布外
+    this._cursorBaseline = undefined; // 空闲时移出画布前保存的 canvas cursor 基线
+    this._containerMouseEnterHandler = () => {
+      this._isMouseOutside = false;
+      // 根据当前状态恢复鼠标样式
+      if (this.drawingShape || this.editingShape) {
+        this.viewer.canvas.style.cursor = "crosshair";
+      } else if (this._cursorBaseline !== undefined) {
+        // 空闲态：恢复移出前保存的业务 cursor 基线
+        this.viewer.canvas.style.cursor = this._cursorBaseline;
+        this._cursorBaseline = undefined;
+      }
+    };
+    this._containerMouseLeaveHandler = () => {
+      this._isMouseOutside = true;
+      // 仅空闲态保存基线；绘制/编辑中的恢复由 _cursorBefore 负责
+      if (this._cursorBefore === undefined)
+        this._cursorBaseline = this.viewer.canvas.style.cursor;
+      // 隐藏提示并恢复默认样式
+      this._hideTooltip();
+      this.viewer.canvas.style.cursor = "default";
+    };
+    viewer.container.addEventListener(
+      "mouseenter",
+      this._containerMouseEnterHandler,
+    );
+    viewer.container.addEventListener(
+      "mouseleave",
+      this._containerMouseLeaveHandler,
+    );
     const input = viewer.cesiumWidget.screenSpaceEventHandler;
     let owner = viewerOwners.get(viewer);
     if (!owner) {
@@ -1075,8 +1106,11 @@ export default class DrawTool {
     if (data.length && !this._isValidShape(shape))
       throw new TypeError("初始控制点无效");
     this.drawingShape = shape;
-    this._cursorBefore = document.body.style.cursor;
-    document.body.style.cursor = "crosshair";
+    // 优先消费移出画布时保存的基线，避免画布外开始绘制时把 "default" 记为原值
+    this._cursorBefore =
+      this._cursorBaseline ?? this.viewer.canvas.style.cursor;
+    this._cursorBaseline = undefined;
+    this.viewer.canvas.style.cursor = "crosshair";
     return shape;
   }
 
@@ -1468,7 +1502,10 @@ export default class DrawTool {
       return;
     this.hideContextMenu();
     this._hideTooltip();
-    this._cursorBefore = document.body.style.cursor;
+    // 优先消费移出画布时保存的基线，避免画布外进入编辑时把 "default" 记为原值
+    this._cursorBefore =
+      this._cursorBaseline ?? this.viewer.canvas.style.cursor;
+    this._cursorBaseline = undefined;
     this.editingShape = shape;
     this._setDynamic(shape, true);
     this._createEditHandles(shape);
@@ -1501,7 +1538,7 @@ export default class DrawTool {
         const feature = this.viewer.scene.pick(e.endPosition);
         if (!Cesium.defined(feature)) {
           this._hideTooltip();
-          document.body.style.cursor = "default";
+          this.viewer.canvas.style.cursor = "default";
           return;
         }
         const lonlat = this.pickLonLat(e.endPosition);
@@ -1513,7 +1550,7 @@ export default class DrawTool {
               "拖拽平移",
             );
           }
-          document.body.style.cursor = "crosshair";
+          this.viewer.canvas.style.cursor = "crosshair";
         } else if (
           shape.midpointEntities &&
           shape.midpointEntities.includes(feature.id)
@@ -1525,10 +1562,10 @@ export default class DrawTool {
               "拖拽增加点",
             );
           }
-          document.body.style.cursor = "crosshair";
+          this.viewer.canvas.style.cursor = "crosshair";
         } else {
           this._hideTooltip();
-          document.body.style.cursor = "default";
+          this.viewer.canvas.style.cursor = "default";
         }
       }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
     };
@@ -1549,7 +1586,7 @@ export default class DrawTool {
           // 拖拽中间点：在该位置插入新顶点，然后转为顶点拖拽
           dragging = true;
           this._hideTooltip();
-          document.body.style.cursor = "crosshair";
+          this.viewer.canvas.style.cursor = "crosshair";
           this.lockCamera();
           // 插入新顶点（在 midIndex 和 midIndex+1 之间）
           const insertAt = midIndex + 1;
@@ -1594,7 +1631,7 @@ export default class DrawTool {
         // 顶点拖拽：更新单个顶点
         dragging = true;
         this._hideTooltip();
-        document.body.style.cursor = "crosshair";
+        this.viewer.canvas.style.cursor = "crosshair";
         this.lockCamera();
         this.interactionHandler.setInputAction((e) => {
           const lonlat = this.pickLonLat(e.endPosition);
@@ -1609,7 +1646,7 @@ export default class DrawTool {
         if (!start) return;
         dragging = true;
         this._hideTooltip();
-        document.body.style.cursor = "crosshair";
+        this.viewer.canvas.style.cursor = "crosshair";
         this.lockCamera();
         const original = shape.controlPoints.map((p) => [p[0], p[1]]);
         this.interactionHandler.setInputAction((e) => {
@@ -1641,7 +1678,7 @@ export default class DrawTool {
       if (this.editingShape !== shape || !this.interactionHandler) return;
       const wasDragging = Boolean(this._cameraState);
       this.unlockCamera();
-      document.body.style.cursor = this._cursorBefore ?? "";
+      this.viewer.canvas.style.cursor = this._cursorBefore ?? "";
       setupHoverHandler();
       if (wasDragging)
         this.emit("editMovePoint", this._buildGraphicResult(shape));
@@ -1816,7 +1853,7 @@ export default class DrawTool {
     this.interactionHandler?.destroy();
     this.interactionHandler = null;
     if (this._cursorBefore !== undefined) {
-      document.body.style.cursor = this._cursorBefore;
+      this.viewer.canvas.style.cursor = this._cursorBefore;
       this._cursorBefore = undefined;
     }
     this.viewer.scene.requestRender?.();
@@ -1828,6 +1865,15 @@ export default class DrawTool {
     this._destroyed = true;
     this.clear();
     this._events.clear();
+    // 清理鼠标移出/移入事件监听
+    this.viewer.container.removeEventListener(
+      "mouseenter",
+      this._containerMouseEnterHandler,
+    );
+    this.viewer.container.removeEventListener(
+      "mouseleave",
+      this._containerMouseLeaveHandler,
+    );
     if (this._ownsDataSource) this.viewer.dataSources.remove(this.dataSource);
     const owner = viewerOwners.get(this.viewer);
     if (owner && --owner.count === 0) {
