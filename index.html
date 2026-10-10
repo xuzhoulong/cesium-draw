@@ -2,7 +2,7 @@
  * @Author: xubingchao
  * @Date: 2026-09-15 13:43:12
  * @LastEditors: xubingchao
- * @LastEditTime: 2026-10-08 16:30:44
+ * @LastEditTime: 2026-10-10 09:50:21
  * @FilePath: \cesium-draw\index.html
 -->
 <!doctype html>
@@ -142,7 +142,8 @@
           >格式为图形数组；单对象请用 drawDemo.addGraphic(data)</label
         >
         <textarea id="demo-json" spellcheck="false" aria-label="图形 JSON">
-[]</textarea>
+[]</textarea
+        >
       </details>
       <details open>
         <summary>事件与操作日志（最近 60 条）</summary>
@@ -205,6 +206,54 @@
         enableEdit: false,
         autoEdit: false,
         style: { lineWidth: 2, color: "#0092ff" },
+      });
+
+      // 进入绘制状态：交互绘制 positions 为 []，id 与完成后的实体一致
+      // 直接传入预置坐标时，positions 为初始坐标快照
+      draw.on("drawStart", (data) => {
+        console.log("开始绘制", data); // { id, positions, type }
+      });
+
+      draw.on("drawAddPoint", (data) => {
+        console.log("绘制新增了点", data); // { id, positions, type }
+      });
+
+      draw.on("drawRemovePoint", (data) => {
+        console.log("绘制删除了点", data); // { id, positions, type }
+      });
+
+      draw.on("drawEnd", (data) => {
+        console.log("结束绘制", data); // { id, positions, type }
+      });
+
+      // 进入某个实体的编辑时触发（画完自动进入 / 点击激活 / 右键开始编辑）
+      draw.on("editStart", (data) => {
+        console.log("开始编辑", data); // { id, positions, type }
+      });
+
+      // 按下线或多边形的中间点，插入新顶点后触发
+      draw.on("editAddPoint", (data) => {
+        console.log("编辑新增了点", data); // { id, positions, type }
+      });
+
+      // 通过右键菜单成功删除顶点后触发
+      draw.on("editRemovePoint", (data) => {
+        console.log("编辑删除了点", data); // { id, positions, type }
+      });
+
+      // 编辑完一个点（拖拽松手）后触发
+      draw.on("editMovePoint", (data) => {
+        console.log("编辑完点", data); // { id, positions, type }
+      });
+
+      // 结束编辑后触发
+      draw.on("editStop", (data) => {
+        console.log("结束编辑", data); // { id, positions, type }
+      });
+
+      // removeGraphic(id或shape)、右键菜单删除后触发；clear() 对每个已完成图形逐个触发
+      draw.on("removeGraphic", (data) => {
+        console.log("删除实体", data); // { id, positions, type }
       });
 
       // 面板集中管理十类事件与生命周期，重建时解绑旧实例并绑定新实例。
